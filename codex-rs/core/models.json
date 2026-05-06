@@ -1,0 +1,54 @@
+{
+  "models": [
+    {
+      "supports_reasoning_summaries": true,
+      "support_verbosity": true,
+      "default_verbosity": "low",
+      "apply_patch_tool_type": "freeform",
+      "truncation_policy": {
+        "mode": "tokens",
+        "limit": 10000
+      },
+      "supports_parallel_tool_calls": false,
+      "context_window": 131072,
+      "reasoning_summary_format": "none",
+      "slug": "big-pickle",
+      "display_name": "big-pickle",
+      "description": "big pickle",
+      "default_reasoning_level": "medium",
+      "supported_reasoning_levels": [
+        {
+          "effort": "low",
+          "description": "Fast responses with lighter reasoning"
+        },
+        {
+          "effort": "medium",
+          "description": "Dynamically adjusts reasoning based on the task"
+        },
+        {
+          "effort": "high",
+          "description": "Maximizes reasoning depth for complex or ambiguous problems"
+        },
+        {
+          "effort": "xhigh",
+          "description": "Extra high reasoning depth for complex problems"
+        }
+      ],
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "minimal_client_version": "0.60.0",
+      "supported_in_api": true,
+      "priority": 1,
+      "base_instructions": "",
+      "experimental_supported_tools": [],
+      "supported_message_roles": [
+        "system",
+        "user",
+        "assistant",
+        "tool",
+        "developer"
+      ],
+      "reasoning_field_name": "reasoning_content"
+    }
+  ]
+}
