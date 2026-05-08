@@ -3409,6 +3409,17 @@ pub(crate) async fn run_turn(
                     use codex_protocol::protocol::{TokenUsage, TokenUsageInfo};
                     let current_info = state.token_info();
                     if let Some(mut info) = current_info {
+                        // Update token count with estimated total when provider
+                        // didn't return usage info in the response
+                        if let Some(estimated) = estimated_token_count {
+                            info.last_token_usage = TokenUsage {
+                                input_tokens: 0,
+                                cached_input_tokens: 0,
+                                output_tokens: 0,
+                                reasoning_output_tokens: 0,
+                                total_tokens: estimated.max(0),
+                            };
+                        }
                         // Update context window if we have it
                         if model_window.is_some() {
                             info.model_context_window = model_window;

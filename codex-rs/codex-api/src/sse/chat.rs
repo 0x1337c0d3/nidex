@@ -6,6 +6,7 @@ use codex_client::StreamResponse;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ReasoningItemContent;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::protocol::TokenUsage;
 use eventsource_stream::Eventsource;
 use futures::Stream;
 use futures::StreamExt;
@@ -351,7 +352,7 @@ pub async fn process_chat_sse<S>(
                     let _ = tx_event
                         .send(Ok(ResponseEvent::Completed {
                             response_id: String::new(),
-                            token_usage: None,
+                            token_usage: parse_usage(&value),
                         }))
                         .await;
                     completed_sent = true;
@@ -411,14 +412,35 @@ pub async fn process_chat_sse<S>(
                 let _ = tx_event
                     .send(Ok(ResponseEvent::Completed {
                         response_id: String::new(),
-                        token_usage: None,
+                        token_usage: parse_usage(&value),
                     }))
                     .await;
                 completed_sent = true;
             }
+
             saw_tool_calls_finish = false;
         }
     }
+}
+
+
+/// Parse `usage` from an SSE event body (OpenAI streaming format).
+fn parse_usage(value: &serde_json::Value) -> Option<TokenUsage> {
+    let usage = value.get("usage")?;
+    Some(TokenUsage {
+        input_tokens: usage.get("prompt_tokens").and_then(|v| v.as_i64()).unwrap_or(0),
+        cached_input_tokens: usage.get("prompt_tokens_details")
+            .and_then(|d| d.get("cached_tokens"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0),
+        output_tokens: usage.get("completion_tokens").and_then(|v| v.as_i64()).unwrap_or(0),
+        reasoning_output_tokens: usage.get("completion_tokens_details")
+            .and_then(|d| d.get("reasoning_tokens"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0),
+        total_tokens: usage.get("total_tokens").and_then(|v| v.as_i64()).unwrap_or(0),
+    })
+        .filter(|u| u.total_tokens > 0 || u.input_tokens > 0 || u.output_tokens > 0)
 }
 
 async fn append_assistant_text(

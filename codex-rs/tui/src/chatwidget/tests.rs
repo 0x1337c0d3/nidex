@@ -701,6 +701,40 @@ async fn token_count_none_resets_context_indicator() {
     assert_eq!(chat.bottom_pane.context_window_percent(), None);
 }
 
+/// Output tokens (including reasoning) must not inflate the context window percentage.
+/// The context window fill is determined by input_tokens only.
+#[tokio::test]
+async fn context_percent_uses_input_tokens_not_total() {
+    let (mut chat, _rx, _ops) = make_chatwidget_manual(None).await;
+
+    let context_window = 13_000;
+    let input_tokens = 700; // ~30% remaining
+    let output_tokens = 9_000; // large reasoning output — must not affect the percentage
+
+    let token_usage = TokenUsage {
+        input_tokens,
+        output_tokens,
+        total_tokens: input_tokens + output_tokens,
+        ..TokenUsage::default()
+    };
+    let token_info = TokenUsageInfo {
+        total_token_usage: token_usage.clone(),
+        last_token_usage: token_usage,
+        model_context_window: Some(context_window),
+    };
+
+    chat.handle_codex_event(Event {
+        id: "token-usage".into(),
+        msg: EventMsg::TokenCount(TokenCountEvent {
+            info: Some(token_info),
+            rate_limits: None,
+        }),
+    });
+
+    // 30% remaining: effective_window = 13000 - 12000 = 1000; used = 700; remaining = 300/1000
+    assert_eq!(chat.bottom_pane.context_window_percent(), Some(30));
+}
+
 #[tokio::test]
 async fn context_indicator_shows_used_tokens_when_window_unknown() {
     let (mut chat, _rx, _ops) = make_chatwidget_manual(Some("unknown-model")).await;
@@ -962,17 +996,18 @@ fn lines_to_single_string(lines: &[ratatui::text::Line<'static>]) -> String {
     s
 }
 
-fn make_token_info(total_tokens: i64, context_window: i64) -> TokenUsageInfo {
-    fn usage(total_tokens: i64) -> TokenUsage {
+fn make_token_info(input_tokens: i64, context_window: i64) -> TokenUsageInfo {
+    fn usage(input_tokens: i64) -> TokenUsage {
         TokenUsage {
-            total_tokens,
+            input_tokens,
+            total_tokens: input_tokens,
             ..TokenUsage::default()
         }
     }
 
     TokenUsageInfo {
-        total_token_usage: usage(total_tokens),
-        last_token_usage: usage(total_tokens),
+        total_token_usage: usage(input_tokens),
+        last_token_usage: usage(input_tokens),
         model_context_window: Some(context_window),
     }
 }

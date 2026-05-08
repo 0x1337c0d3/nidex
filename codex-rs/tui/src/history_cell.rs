@@ -399,14 +399,14 @@ impl HistoryCell for PlainHistoryCell {
     }
 }
 
-#[cfg_attr(debug_assertions, allow(dead_code))]
+#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct UpdateAvailableHistoryCell {
     latest_version: String,
     update_action: Option<UpdateAction>,
 }
 
-#[cfg_attr(debug_assertions, allow(dead_code))]
+#[allow(dead_code)]
 impl UpdateAvailableHistoryCell {
     pub(crate) fn new(latest_version: String, update_action: Option<UpdateAction>) -> Self {
         Self {
@@ -889,6 +889,7 @@ fn with_border_internal(
 /// Return the emoji followed by a hair space (U+200A).
 /// Using only the hair space avoids excessive padding after the emoji while
 /// still providing a small visual gap across terminals.
+#[allow(dead_code)]
 pub(crate) fn padded_emoji(emoji: &str) -> String {
     format!("{emoji}\u{200A}")
 }

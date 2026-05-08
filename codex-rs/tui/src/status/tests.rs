@@ -929,9 +929,11 @@ async fn status_context_window_uses_last_usage() {
         .find(|line| line.contains("Context window"))
         .expect("context line");
 
+    // Context window fill is input_tokens (12,800), not total_tokens (13,679 = input+output).
+    // Output tokens don't contribute to context fill — they become input in the next turn.
     assert!(
-        context_line.contains("13.7K used / 272K"),
-        "expected context line to reflect last usage tokens, got: {context_line}"
+        context_line.contains("12.8K used / 272K"),
+        "expected context line to reflect input tokens (context fill), got: {context_line}"
     );
     assert!(
         !context_line.contains("102K"),

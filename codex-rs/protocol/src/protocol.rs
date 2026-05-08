@@ -1251,8 +1251,19 @@ impl TokenUsage {
         (self.non_cached_input() + self.output_tokens.max(0)).max(0)
     }
 
+    /// Returns the token count representing current context window fill.
+    ///
+    /// When the API returns a real response, `input_tokens` is the accurate measure —
+    /// it counts what was sent as context (history + system prompt + tools), while
+    /// `output_tokens` (including reasoning) does not contribute to the next call's
+    /// context fill. The estimator path (`recompute_token_usage`) only sets
+    /// `total_tokens`, so we fall back to that when `input_tokens` is zero.
     pub fn tokens_in_context_window(&self) -> i64 {
-        self.total_tokens
+        if self.input_tokens > 0 {
+            self.input_tokens
+        } else {
+            self.total_tokens
+        }
     }
 
     /// Estimate the remaining user-controllable percentage of the model's context window.

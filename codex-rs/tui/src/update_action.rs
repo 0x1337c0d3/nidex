@@ -28,6 +28,7 @@ impl UpdateAction {
 }
 
 #[cfg(not(debug_assertions))]
+#[allow(dead_code)]
 pub(crate) fn get_update_action() -> Option<UpdateAction> {
     let exe = std::env::current_exe().unwrap_or_default();
     let managed_by_npm = std::env::var_os("CODEX_MANAGED_BY_NPM").is_some();
@@ -42,6 +43,7 @@ pub(crate) fn get_update_action() -> Option<UpdateAction> {
 }
 
 #[cfg(any(not(debug_assertions), test))]
+#[allow(dead_code)]
 fn detect_update_action(
     is_macos: bool,
     current_exe: &std::path::Path,
