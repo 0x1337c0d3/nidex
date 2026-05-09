@@ -259,7 +259,7 @@ async fn test_send_message_session_not_found() -> Result<()> {
         mcp.read_stream_until_error_message(RequestId::Integer(req_id)),
     )
     .await??;
-    assert_eq!(err.id, RequestId::Integer(req_id));
+    assert_eq!(err.id, Some(RequestId::Integer(req_id)));
     Ok(())
 }
 

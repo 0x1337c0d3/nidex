@@ -16,18 +16,24 @@
   ],
   "definitions": {
     "JSONRPCError": {
-      "description": "A response to a request that indicates an error occurred.",
+      "description": "A response to a request that indicates an error occurred. `id` is optional because Zed (and per JSON-RPC spec) sends error responses without an id when the error is for a notification (which has no id).",
       "properties": {
         "error": {
           "$ref": "#/definitions/JSONRPCErrorError"
         },
         "id": {
-          "$ref": "#/definitions/RequestId"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RequestId"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
-        "error",
-        "id"
+        "error"
       ],
       "type": "object"
     },

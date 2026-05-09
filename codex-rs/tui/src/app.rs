@@ -928,10 +928,11 @@ impl App {
 
         let harness_overrides =
             normalize_harness_overrides_for_cwd(harness_overrides, &config.cwd)?;
-        let thread_manager = Arc::new(ThreadManager::new(
+        let thread_manager = Arc::new(ThreadManager::with_model_provider(
             config.codex_home.clone(),
             auth_manager.clone(),
             SessionSource::Cli,
+            config.model_provider.clone(),
         ));
         let mut model = thread_manager
             .get_models_manager()
@@ -2952,7 +2953,7 @@ mod tests {
         );
         assert_eq!(
             summary.resume_command,
-            Some("codex resume 123e4567-e89b-12d3-a456-426614174000".to_string())
+            Some("nidex resume 123e4567-e89b-12d3-a456-426614174000".to_string())
         );
     }
 
@@ -2970,7 +2971,7 @@ mod tests {
             .expect("summary");
         assert_eq!(
             summary.resume_command,
-            Some("codex resume my-session".to_string())
+            Some("nidex resume my-session".to_string())
         );
     }
 }

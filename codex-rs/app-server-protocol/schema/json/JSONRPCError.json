@@ -31,18 +31,24 @@
       "description": "A JSON-RPC request identifier — either a string or an integer.\n\n`#[serde(untagged)]` is intentionally NOT used here. Untagged enum deserialization inside serde's internally-tagged `ClientRequest` enum (which uses `#[serde(tag = \"method\")]`) triggers a known serde limitation: the error from the first failed variant attempt (\"invalid type: integer, expected a string\") leaks out instead of being silently retried. A manual `Visitor` with `deserialize_any` avoids this."
     }
   },
-  "description": "A response to a request that indicates an error occurred.",
+  "description": "A response to a request that indicates an error occurred. `id` is optional because Zed (and per JSON-RPC spec) sends error responses without an id when the error is for a notification (which has no id).",
   "properties": {
     "error": {
       "$ref": "#/definitions/JSONRPCErrorError"
     },
     "id": {
-      "$ref": "#/definitions/RequestId"
+      "anyOf": [
+        {
+          "$ref": "#/definitions/RequestId"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [
-    "error",
-    "id"
+    "error"
   ],
   "title": "JSONRPCError",
   "type": "object"

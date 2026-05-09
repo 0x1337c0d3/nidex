@@ -288,6 +288,8 @@ pub(crate) struct CodexMessageProcessor {
     pending_fuzzy_searches: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     // Pending ACP session/prompt requests — reply with stopReason when turn completes.
     pending_acp_prompts: PendingAcpPrompts,
+    // Last agent message text per ACP session — included in SessionPromptResponse.
+    pending_acp_messages: Arc<Mutex<HashMap<String, String>>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -359,6 +361,7 @@ impl CodexMessageProcessor {
             turn_summary_store: Arc::new(Mutex::new(HashMap::new())),
             pending_fuzzy_searches: Arc::new(Mutex::new(HashMap::new())),
             pending_acp_prompts: Arc::new(Mutex::new(HashMap::new())),
+            pending_acp_messages: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -3718,6 +3721,10 @@ impl CodexMessageProcessor {
             .lock()
             .await
             .remove(&session_id);
+        self.pending_acp_messages
+            .lock()
+            .await
+            .remove(&session_id);
 
         let _ = thread.submit(Op::Interrupt).await;
 
@@ -3727,6 +3734,7 @@ impl CodexMessageProcessor {
                     request_id,
                     SessionPromptResponse {
                         stop_reason: "cancelled".to_string(),
+                        output: None,
                     },
                 )
                 .await;
@@ -4259,6 +4267,7 @@ impl CodexMessageProcessor {
         let pending_rollbacks = self.pending_rollbacks.clone();
         let turn_summary_store = self.turn_summary_store.clone();
         let pending_acp_prompts = self.pending_acp_prompts.clone();
+        let pending_acp_messages = self.pending_acp_messages.clone();
         let api_version_for_task = api_version;
         let fallback_model_provider = self.config.model_provider_id.clone();
         tokio::spawn(async move {
@@ -4289,17 +4298,48 @@ impl CodexMessageProcessor {
                             .await
                             .get(&thread_id_str)
                             .cloned();
+                        tracing::debug!(
+                            "acp event: msg_type={}, thread_id_str={}, has_pending={}",
+                            event.msg.to_string(),
+                            thread_id_str,
+                            pending_request_id.is_some()
+                        );
                         if pending_request_id.is_some() {
                             match &event.msg {
                                 EventMsg::AgentMessageContentDelta(delta) => {
                                     let notification = ServerNotification::SessionUpdate(
                                         SessionUpdateNotification {
                                             session_id: thread_id_str.clone(),
-                                            update: SessionUpdatePayload::AgentMessage {
-                                                role: "assistant".to_string(),
-                                                content: vec![AcpContentBlock::Text {
+                                            update: SessionUpdatePayload::AgentMessageChunk {
+                                                content: AcpContentBlock::Text {
                                                     text: delta.delta.clone(),
-                                                }],
+                                                },
+                                            },
+                                        },
+                                    );
+                                    outgoing_for_task
+                                        .send_server_notification(notification)
+                                        .await;
+                                }
+                                EventMsg::AgentMessage(msg) => {
+                                    tracing::debug!(
+                                        "acp: storing agent message for {}: {:?}",
+                                        thread_id_str,
+                                        msg.message
+                                    );
+                                    pending_acp_messages
+                                        .lock()
+                                        .await
+                                        .insert(thread_id_str.clone(), msg.message.clone());
+                                    // Send session/update so clients like Zed that
+                                    // don't implement item/completed can display the text.
+                                    let notification = ServerNotification::SessionUpdate(
+                                        SessionUpdateNotification {
+                                            session_id: thread_id_str.clone(),
+                                            update: SessionUpdatePayload::AgentMessageChunk {
+                                                content: AcpContentBlock::Text {
+                                                    text: msg.message.clone(),
+                                                },
                                             },
                                         },
                                     );
@@ -4313,9 +4353,19 @@ impl CodexMessageProcessor {
                                         .await
                                         .remove(&thread_id_str);
                                     if let Some(request_id) = request_id {
+                                        let output = pending_acp_messages
+                                            .lock()
+                                            .await
+                                            .remove(&thread_id_str);
+                                        tracing::debug!(
+                                            "acp: TurnComplete for {}, output={:?}",
+                                            thread_id_str,
+                                            output
+                                        );
                                         outgoing_for_task
                                             .send_response(request_id, SessionPromptResponse {
                                                 stop_reason: "end_turn".to_string(),
+                                                output,
                                             })
                                             .await;
                                     }

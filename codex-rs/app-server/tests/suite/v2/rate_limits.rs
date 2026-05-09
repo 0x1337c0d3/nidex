@@ -26,7 +26,7 @@ async fn get_account_rate_limits_requires_auth() -> Result<()> {
     )
     .await??;
 
-    assert_eq!(error.id, RequestId::Integer(request_id));
+    assert_eq!(error.id, Some(RequestId::Integer(request_id)));
     assert_eq!(error.error.code, INVALID_REQUEST_ERROR_CODE);
     assert_eq!(
         error.error.message,

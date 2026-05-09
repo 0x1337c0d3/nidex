@@ -169,6 +169,23 @@ pub async fn run_main(
     loader_overrides: LoaderOverrides,
     default_analytics_enabled: bool,
 ) -> IoResult<()> {
+    // Initialize logging before spawning any tasks so early debug calls are captured.
+    let file_appender = tracing_appender::rolling::never("/tmp", "codex-app-server.log");
+    let (non_blocking_file, guard) = tracing_appender::non_blocking(file_appender);
+    let _ = Box::leak(Box::new(guard));
+    let stderr_fmt = tracing_subscriber::fmt::layer()
+        .with_writer(std::io::stderr)
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
+        .with_filter(EnvFilter::from_default_env());
+    let file_fmt = tracing_subscriber::fmt::layer()
+        .with_writer(non_blocking_file)
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
+        .with_filter(EnvFilter::new("debug"));
+    let _ = tracing_subscriber::registry()
+        .with(stderr_fmt)
+        .with(file_fmt)
+        .try_init();
+
     // Set up channels.
     let (incoming_tx, mut incoming_rx) = mpsc::channel::<JSONRPCMessage>(CHANNEL_CAPACITY);
     let (outgoing_tx, mut outgoing_rx) = mpsc::channel::<OutgoingMessage>(CHANNEL_CAPACITY);
@@ -177,22 +194,40 @@ pub async fn run_main(
     let stdin_reader_handle = tokio::spawn({
         async move {
             let stdin = io::stdin();
+            debug!("stdin reader started");
             let reader = BufReader::new(stdin);
             let mut lines = reader.lines();
 
-            while let Some(line) = lines.next_line().await.unwrap_or_default() {
-                match serde_json::from_str::<JSONRPCMessage>(&line) {
-                    Ok(msg) => {
-                        if incoming_tx.send(msg).await.is_err() {
-                            // Receiver gone – nothing left to do.
-                            break;
+            loop {
+                match lines.next_line().await {
+                    Ok(Some(line)) => {
+                        debug!("stdin received: {}", line);
+                        match serde_json::from_str::<JSONRPCMessage>(&line) {
+                            Ok(msg) => {
+                                match &msg {
+                                    JSONRPCMessage::Request(req) => debug!("parsed request: id={:?}, method={}", req.id, req.method),
+                                    JSONRPCMessage::Notification(notif) => debug!("parsed notification: method={}", notif.method),
+                                    JSONRPCMessage::Response(_) => debug!("parsed response"),
+                                    JSONRPCMessage::Error(_) => debug!("parsed error"),
+                                }
+                                if incoming_tx.send(msg).await.is_err() {
+                                    debug!("stdin reader: channel closed, stopping");
+                                    break;
+                                }
+                            }
+                            Err(e) => error!("Failed to deserialize JSONRPCMessage: {e} (raw: {})", line),
                         }
                     }
-                    Err(e) => error!("Failed to deserialize JSONRPCMessage: {e}"),
+                    Ok(None) => {
+                        debug!("stdin reader finished (EOF)");
+                        break;
+                    }
+                    Err(e) => {
+                        error!("stdin read error: {e}");
+                        break;
+                    }
                 }
             }
-
-            debug!("stdin reader finished (EOF)");
         }
     });
 
@@ -242,7 +277,7 @@ pub async fn run_main(
         config_warnings.push(warning);
     }
 
-    let otel = codex_core::otel_init::build_provider(
+    let _otel = codex_core::otel_init::build_provider(
         &config,
         env!("CARGO_PKG_VERSION"),
         Some("codex_app_server"),
@@ -255,22 +290,7 @@ pub async fn run_main(
         )
     })?;
 
-    // Install a simple subscriber so `tracing` output is visible.  Users can
-    // control the log level with `RUST_LOG`.
-    let stderr_fmt = tracing_subscriber::fmt::layer()
-        .with_writer(std::io::stderr)
-        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::FULL)
-        .with_filter(EnvFilter::from_default_env());
-
-    let otel_logger_layer = otel.as_ref().and_then(|o| o.logger_layer());
-
-    let otel_tracing_layer = otel.as_ref().and_then(|o| o.tracing_layer());
-
-    let _ = tracing_subscriber::registry()
-        .with(stderr_fmt)
-        .with(otel_logger_layer)
-        .with(otel_tracing_layer)
-        .try_init();
+    // Subscriber was already initialized at the top of run_main before task spawning.
     for warning in &config_warnings {
         match &warning.details {
             Some(details) => error!("{} {}", warning.summary, details),
@@ -342,6 +362,7 @@ pub async fn run_main(
             };
             match serde_json::to_string(&value) {
                 Ok(mut json) => {
+                    debug!("stdout sending: {}", json);
                     json.push('\n');
                     if let Err(e) = stdout.write_all(json.as_bytes()).await {
                         error!("Failed to write to stdout: {e}");

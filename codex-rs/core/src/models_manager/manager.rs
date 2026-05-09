@@ -317,8 +317,6 @@ impl ModelsManager {
             Ok(Vec::new())
         }
     }
-
-    #[cfg(any(test, feature = "test-support"))]
     /// Construct a manager with a specific provider for testing.
     pub fn with_provider(
         codex_home: PathBuf,

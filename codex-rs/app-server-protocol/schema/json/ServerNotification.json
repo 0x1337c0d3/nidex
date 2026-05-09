@@ -55,7 +55,7 @@
       "type": "object"
     },
     "AcpContentBlock": {
-      "description": "A single ACP content block inside a `session/update` agentMessage update.",
+      "description": "A single ACP content block inside a `session/update` notification. Matches the ACP `ContentBlock` wire format: `{\"type\": \"text\", \"text\": \"...\"}`.",
       "oneOf": [
         {
           "properties": {
@@ -5364,34 +5364,25 @@
       "type": "object"
     },
     "SessionUpdatePayload": {
-      "description": "Tagged payload for the ACP `session/update` server→client notification.",
+      "description": "Tagged payload for the ACP `session/update` server→client notification. Matches the ACP `SessionUpdate` wire format with `\"sessionUpdate\"` discriminant.",
       "oneOf": [
         {
-          "description": "Streaming assistant text delta.",
+          "description": "A chunk of the agent's response (text content).",
           "properties": {
             "content": {
-              "items": {
-                "$ref": "#/definitions/AcpContentBlock"
-              },
-              "type": "array"
+              "$ref": "#/definitions/AcpContentBlock"
             },
-            "role": {
-              "type": "string"
-            },
-            "type": {
+            "sessionUpdate": {
               "enum": [
-                "agentMessage"
+                "agent_message_chunk"
               ],
-              "title": "AgentMessageSessionUpdatePayloadType",
               "type": "string"
             }
           },
           "required": [
             "content",
-            "role",
-            "type"
+            "sessionUpdate"
           ],
-          "title": "AgentMessageSessionUpdatePayload",
           "type": "object"
         },
         {
@@ -5400,19 +5391,17 @@
             "error": {
               "type": "string"
             },
-            "type": {
+            "sessionUpdate": {
               "enum": [
                 "error"
               ],
-              "title": "ErrorSessionUpdatePayloadType",
               "type": "string"
             }
           },
           "required": [
             "error",
-            "type"
+            "sessionUpdate"
           ],
-          "title": "ErrorSessionUpdatePayload",
           "type": "object"
         }
       ]

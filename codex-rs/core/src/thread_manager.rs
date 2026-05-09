@@ -1,8 +1,7 @@
 use crate::AuthManager;
+use crate::ModelProviderInfo;
 #[cfg(any(test, feature = "test-support"))]
 use crate::CodexAuth;
-#[cfg(any(test, feature = "test-support"))]
-use crate::ModelProviderInfo;
 use crate::agent::AgentControl;
 use crate::codex::Codex;
 use crate::codex::CodexSpawnOk;
@@ -94,6 +93,36 @@ impl ThreadManager {
             _test_codex_home_guard: None,
         }
     }
+
+/// Construct a manager with a specific model provider.
+/// Uses the given provider info to configure model refresh and discovery.
+pub fn with_model_provider(
+    codex_home: PathBuf,
+    auth_manager: Arc<AuthManager>,
+    session_source: SessionSource,
+    provider: ModelProviderInfo,
+) -> Self {
+    let (thread_created_tx, _) = broadcast::channel(THREAD_CREATED_CHANNEL_CAPACITY);
+    Self {
+        state: Arc::new(ThreadManagerState {
+            threads: Arc::new(RwLock::new(HashMap::new())),
+            thread_created_tx,
+            models_manager: Arc::new(ModelsManager::with_provider(
+                codex_home.clone(),
+                auth_manager.clone(),
+                provider,
+            )),
+            skills_manager: Arc::new(SkillsManager::new(codex_home)),
+            auth_manager,
+            session_source,
+            #[cfg(any(test, feature = "test-support"))]
+            ops_log: Arc::new(std::sync::Mutex::new(Vec::new())),
+        }),
+        #[cfg(any(test, feature = "test-support"))]
+        _test_codex_home_guard: None,
+    }
+}
+
 
     #[cfg(any(test, feature = "test-support"))]
     /// Construct with a dummy AuthManager containing the provided CodexAuth.

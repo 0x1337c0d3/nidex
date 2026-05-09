@@ -733,7 +733,7 @@ impl CodexClient {
                     }
                 }
                 JSONRPCMessage::Error(err) => {
-                    if err.id == request_id {
+                    if err.id.as_ref() == Some(&request_id) {
                         bail!("{method} failed: {err:?}");
                     }
                 }

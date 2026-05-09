@@ -61,11 +61,7 @@
       ]
     },
     "protocolVersion": {
-      "description": "ACP protocol version the client wishes to use (e.g. `\"2025-05-12\"`).",
-      "type": [
-        "string",
-        "null"
-      ]
+      "description": "ACP protocol version the client wishes to use. Stored as raw JSON so we can echo back the exact type (integer or string) the client sent."
     }
   },
   "title": "InitializeParams",

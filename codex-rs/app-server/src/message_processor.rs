@@ -114,10 +114,11 @@ impl MessageProcessor {
         auth_manager.set_external_auth_refresher(Arc::new(ExternalAuthRefreshBridge {
             outgoing: outgoing.clone(),
         }));
-        let thread_manager = Arc::new(ThreadManager::new(
+        let thread_manager = Arc::new(ThreadManager::with_model_provider(
             config.codex_home.clone(),
             auth_manager.clone(),
             SessionSource::VSCode,
+            config.model_provider.clone(),
         ));
         let codex_message_processor = CodexMessageProcessor::new(CodexMessageProcessorArgs {
             auth_manager,
@@ -232,12 +233,12 @@ impl MessageProcessor {
                     }
 
                     let user_agent = get_codex_user_agent();
-                    let negotiated_version = params
-                        .protocol_version
-                        .unwrap_or_else(|| "2025-05-12".to_string());
+                    let echoed_version = params.protocol_version.unwrap_or_else(|| {
+                        serde_json::Value::String("2025-05-12".to_string())
+                    });
                     let response = InitializeResponse {
                         user_agent,
-                        protocol_version: negotiated_version,
+                        protocol_version: echoed_version,
                         agent_capabilities: Some(AgentCapabilities {
                             // Gap 5: all session lifecycle methods implemented.
                             load_session: true,
@@ -361,8 +362,15 @@ impl MessageProcessor {
 
     /// Handle an error object received from the peer.
     pub(crate) async fn process_error(&mut self, err: JSONRPCError) {
-        tracing::error!("<- error: {:?}", err);
-        self.outgoing.notify_client_error(err.id, err.error).await;
+        if let Some(id) = err.id {
+            tracing::error!("<- error for request {:?}: {:?}", id, err.error);
+            self.outgoing.notify_client_error(id, err.error).await;
+        } else {
+            // Peer sent an error with no id — this is a "Method not found" response
+            // to one of our server notifications. Expected when the client doesn't
+            // implement all notification methods.
+            tracing::debug!("<- peer rejected notification: {:?}", err.error.data);
+        }
     }
 
     async fn handle_config_read(&self, request_id: RequestId, params: ConfigReadParams) {

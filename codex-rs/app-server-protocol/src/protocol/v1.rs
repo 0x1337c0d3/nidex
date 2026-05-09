@@ -29,12 +29,14 @@ use uuid::Uuid;
 use crate::protocol::common::AuthMode;
 use crate::protocol::common::GitSha;
 
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct InitializeParams {
-    /// ACP protocol version the client wishes to use (e.g. `"2025-05-12"`).
+    /// ACP protocol version the client wishes to use. Stored as raw JSON so
+    /// we can echo back the exact type (integer or string) the client sent.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub protocol_version: Option<String>,
+    pub protocol_version: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub client_info: Option<ClientInfo>,
     #[serde(alias = "capabilities", skip_serializing_if = "Option::is_none")]
@@ -117,8 +119,8 @@ pub struct AgentInfo {
 #[serde(rename_all = "camelCase")]
 pub struct InitializeResponse {
     pub user_agent: String,
-    /// ACP protocol version negotiated with the client (e.g. `"2025-05-12"`).
-    pub protocol_version: String,
+    /// ACP protocol version echoed back from the client's request.
+    pub protocol_version: serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_capabilities: Option<AgentCapabilities>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -183,6 +185,11 @@ pub struct SessionPromptParams {
 #[serde(rename_all = "camelCase")]
 pub struct SessionPromptResponse {
     pub stop_reason: String,
+    /// Full text of the agent's response for this turn. Included here so
+    /// clients (e.g. Zed) that don't implement streaming item notifications
+    /// can still display the response.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
 }
 
 /// Params for the Zed ACP `session/cancel` notification (client → server).
@@ -434,22 +441,21 @@ pub struct AcpTerminalReleaseParams {
 #[serde(rename_all = "camelCase")]
 pub struct AcpTerminalReleaseResponse {}
 
-/// A single ACP content block inside a `session/update` agentMessage update.
+/// A single ACP content block inside a `session/update` notification.
+/// Matches the ACP `ContentBlock` wire format: `{"type": "text", "text": "..."}`.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum AcpContentBlock {
     Text { text: String },
 }
 
 /// Tagged payload for the ACP `session/update` server→client notification.
+/// Matches the ACP `SessionUpdate` wire format with `"sessionUpdate"` discriminant.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "sessionUpdate", rename_all = "snake_case")]
 pub enum SessionUpdatePayload {
-    /// Streaming assistant text delta.
-    AgentMessage {
-        role: String,
-        content: Vec<AcpContentBlock>,
-    },
+    /// A chunk of the agent's response (text content).
+    AgentMessageChunk { content: AcpContentBlock },
     /// Turn ended with an error.
     Error { error: String },
 }

@@ -5,5 +5,6 @@ import type { AcpContentBlock } from "./AcpContentBlock";
 
 /**
  * Tagged payload for the ACP `session/update` server→client notification.
+ * Matches the ACP `SessionUpdate` wire format with `"sessionUpdate"` discriminant.
  */
-export type SessionUpdatePayload = { "type": "agentMessage", role: string, content: Array<AcpContentBlock>, } | { "type": "error", error: string, };
+export type SessionUpdatePayload = { "sessionUpdate": "agent_message_chunk", content: AcpContentBlock, } | { "sessionUpdate": "error", error: string, };

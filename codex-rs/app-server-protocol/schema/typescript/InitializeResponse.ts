@@ -7,9 +7,9 @@ import type { JsonValue } from "./serde_json/JsonValue";
 
 export type InitializeResponse = { userAgent: string, 
 /**
- * ACP protocol version negotiated with the client (e.g. `"2025-05-12"`).
+ * ACP protocol version echoed back from the client's request.
  */
-protocolVersion: string, agentCapabilities: AgentCapabilities | null, agentInfo: AgentInfo | null, 
+protocolVersion: JsonValue, agentCapabilities: AgentCapabilities | null, agentInfo: AgentInfo | null, 
 /**
  * Auth methods supported by the server (empty = no auth required).
  */

@@ -6,4 +6,10 @@
  * Response for the Zed ACP `session/prompt` method.
  * Sent only after the full turn completes (long-polling style).
  */
-export type SessionPromptResponse = { stopReason: string, };
+export type SessionPromptResponse = { stopReason: string, 
+/**
+ * Full text of the agent's response for this turn. Included here so
+ * clients (e.g. Zed) that don't implement streaming item notifications
+ * can still display the response.
+ */
+output: string | null, };

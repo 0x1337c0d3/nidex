@@ -399,7 +399,11 @@ async fn codex_tool_passes_base_instructions() -> anyhow::Result<()> {
     );
 
     let requests = server.received_requests().await.unwrap();
-    let request = requests[0].body_json::<serde_json::Value>()?;
+    let chat_request = requests
+        .iter()
+        .find(|r| r.url.path() == "/v1/chat/completions")
+        .ok_or_else(|| anyhow::anyhow!("no request to /v1/chat/completions found"))?;
+    let request = chat_request.body_json::<serde_json::Value>()?;
     let instructions = request["messages"][0]["content"].as_str().unwrap();
     assert!(instructions.starts_with("You are a helpful assistant."));
 

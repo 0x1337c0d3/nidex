@@ -131,8 +131,7 @@
       ]
     },
     "protocolVersion": {
-      "description": "ACP protocol version negotiated with the client (e.g. `\"2025-05-12\"`).",
-      "type": "string"
+      "description": "ACP protocol version echoed back from the client's request."
     },
     "userAgent": {
       "type": "string"

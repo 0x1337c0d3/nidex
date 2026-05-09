@@ -178,7 +178,7 @@ impl McpProcess {
         capabilities: Option<InitializeCapabilities>,
     ) -> anyhow::Result<JSONRPCMessage> {
         self.initialize_with_params(InitializeParams {
-            protocol_version: Some("2025-05-12".to_string()),
+            protocol_version: Some(serde_json::Value::String("2025-05-12".to_string())),
             client_info: Some(client_info),
             client_capabilities: capabilities,
         })
@@ -209,7 +209,7 @@ impl McpProcess {
                 Ok(JSONRPCMessage::Response(response))
             }
             JSONRPCMessage::Error(error) => {
-                if error.id != RequestId::Integer(request_id) {
+                if error.id != Some(RequestId::Integer(request_id)) {
                     anyhow::bail!(
                         "initialize error id mismatch: expected {}, got {:?}",
                         request_id,
@@ -619,7 +619,7 @@ impl McpProcess {
         id: RequestId,
         error: JSONRPCErrorError,
     ) -> anyhow::Result<()> {
-        self.send_jsonrpc_message(JSONRPCMessage::Error(JSONRPCError { id, error }))
+        self.send_jsonrpc_message(JSONRPCMessage::Error(JSONRPCError { id: Some(id), error }))
             .await
     }
 
@@ -771,7 +771,7 @@ impl McpProcess {
         match message {
             JSONRPCMessage::Request(request) => Some(&request.id),
             JSONRPCMessage::Response(response) => Some(&response.id),
-            JSONRPCMessage::Error(err) => Some(&err.id),
+            JSONRPCMessage::Error(err) => err.id.as_ref(),
             JSONRPCMessage::Notification(_) => None,
         }
     }

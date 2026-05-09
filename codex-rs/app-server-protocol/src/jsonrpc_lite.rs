@@ -88,10 +88,14 @@ pub struct JSONRPCResponse {
 }
 
 /// A response to a request that indicates an error occurred.
+/// `id` is optional because Zed (and per JSON-RPC spec) sends error responses
+/// without an id when the error is for a notification (which has no id).
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema, TS)]
 pub struct JSONRPCError {
     pub error: JSONRPCErrorError,
-    pub id: RequestId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub id: Option<RequestId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, JsonSchema, TS)]

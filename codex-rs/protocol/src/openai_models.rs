@@ -301,9 +301,89 @@ impl From<&ModelUpgrade> for ModelInfoUpgrade {
 }
 
 /// Response wrapper for `/models`.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, TS, JsonSchema, Default)]
+///
+/// Accepts two shapes:
+/// - `{ "models": [...] }` — the Codex backend format
+/// - `{ "object": "list", "data": [...] }` — the OpenAI `/v1/models` format
+#[derive(Debug, Clone, PartialEq, Eq, TS, JsonSchema, Default)]
 pub struct ModelsResponse {
     pub models: Vec<ModelInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct OpenaiModelEntry {
+    id: String,
+    object: String,
+    created: i64,
+    owned_by: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct OpenaiModelsList {
+    object: String,
+    data: Vec<OpenaiModelEntry>,
+}
+
+impl Serialize for ModelsResponse {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct Helper<'a> {
+            models: &'a [ModelInfo],
+        }
+        Helper { models: &self.models }.serialize(s)
+    }
+}
+
+impl<'de> Deserialize<'de> for ModelsResponse {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum ModelsResponseRaw {
+            Codex { models: Vec<ModelInfo> },
+            Openai(OpenaiModelsList),
+        }
+
+        match ModelsResponseRaw::deserialize(d)? {
+            ModelsResponseRaw::Codex { models } => Ok(ModelsResponse { models }),
+            ModelsResponseRaw::Openai(list) => {
+                let models: Vec<ModelInfo> = list
+                    .data
+                    .into_iter()
+                    .map(|entry| ModelInfo {
+                        display_name: entry.id.clone(),
+                        slug: entry.id,
+                        description: Some(format!("NVIDIA model ({})", entry.owned_by)),
+                        default_reasoning_level: None,
+                        supported_reasoning_levels: Vec::new(),
+                        shell_type: ConfigShellToolType::Default,
+                        visibility: ModelVisibility::List,
+                        supported_in_api: true,
+                        priority: 0,
+                        upgrade: None,
+                        base_instructions: String::new(),
+                        model_messages: None,
+                        supports_reasoning_summaries: false,
+                        support_verbosity: false,
+                        default_verbosity: None,
+                        apply_patch_tool_type: None,
+                        truncation_policy: TruncationPolicyConfig {
+                            mode: TruncationMode::Tokens,
+                            limit: 128_000,
+                        },
+                        supports_parallel_tool_calls: false,
+                        context_window: None,
+                        auto_compact_token_limit: None,
+                        effective_context_window_percent: 95,
+                        experimental_supported_tools: Vec::new(),
+                        input_modalities: default_input_modalities(),
+                        supported_message_roles: default_supported_message_roles(),
+                        reasoning_field_name: None,
+                    })
+                    .collect();
+                Ok(ModelsResponse { models })
+            }
+        }
+    }
 }
 
 // convert ModelInfo to ModelPreset
