@@ -3412,13 +3412,15 @@ pub(crate) async fn run_turn(
                         // Update token count with estimated total when provider
                         // didn't return usage info in the response
                         if let Some(estimated) = estimated_token_count {
-                            info.last_token_usage = TokenUsage {
-                                input_tokens: 0,
-                                cached_input_tokens: 0,
-                                output_tokens: 0,
-                                reasoning_output_tokens: 0,
-                                total_tokens: estimated.max(0),
-                            };
+                            if info.last_token_usage.total_tokens == 0 {
+                                info.last_token_usage = TokenUsage {
+                                    input_tokens: 0,
+                                    cached_input_tokens: 0,
+                                    output_tokens: 0,
+                                    reasoning_output_tokens: 0,
+                                    total_tokens: estimated.max(0),
+                                };
+                            }
                         }
                         // Update context window if we have it
                         if model_window.is_some() {

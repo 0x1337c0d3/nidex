@@ -32,9 +32,13 @@ use crate::protocol::common::GitSha;
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct InitializeParams {
-    pub client_info: ClientInfo,
+    /// ACP protocol version the client wishes to use (e.g. `"2025-05-12"`).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub capabilities: Option<InitializeCapabilities>,
+    pub protocol_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_info: Option<ClientInfo>,
+    #[serde(alias = "capabilities", skip_serializing_if = "Option::is_none")]
+    pub client_capabilities: Option<InitializeCapabilities>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
@@ -52,12 +56,410 @@ pub struct InitializeCapabilities {
     /// Opt into receiving experimental API methods and fields.
     #[serde(default)]
     pub experimental_api: bool,
+    /// Client supports delegated terminal execution (`terminal/*` server→client requests).
+    #[serde(default)]
+    pub terminal: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptCapabilities {
+    #[serde(default)]
+    pub image: bool,
+    #[serde(default)]
+    pub audio: bool,
+    #[serde(default)]
+    pub embedded_context: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct McpCapabilities {
+    #[serde(default)]
+    pub http: bool,
+    #[serde(default)]
+    pub sse: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentCapabilities {
+    /// Server supports `session/load` (resume with history replay).
+    #[serde(default)]
+    pub load_session: bool,
+    /// Server supports `session/close`.
+    #[serde(default)]
+    pub close_session: bool,
+    /// Server supports `session/list`.
+    #[serde(default)]
+    pub list_sessions: bool,
+    /// Server supports `session/resume` (resume without history replay).
+    #[serde(default)]
+    pub resume_session: bool,
+    /// Server supports `authenticate`.
+    #[serde(default)]
+    pub authenticate: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_capabilities: Option<PromptCapabilities>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcp_capabilities: Option<McpCapabilities>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentInfo {
+    pub name: String,
+    pub title: String,
+    pub version: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 pub struct InitializeResponse {
     pub user_agent: String,
+    /// ACP protocol version negotiated with the client (e.g. `"2025-05-12"`).
+    pub protocol_version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_capabilities: Option<AgentCapabilities>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_info: Option<AgentInfo>,
+    /// Auth methods supported by the server (empty = no auth required).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_methods: Option<Vec<serde_json::Value>>,
+}
+
+/// Params for the ACP `session/new` method.
+/// ACP only requires `cwd` and `mcpServers`; all codex-specific fields are
+/// supplied by server defaults or ignored until later gaps are addressed.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpSessionNewParams {
+    pub cwd: String,
+    #[serde(default)]
+    pub mcp_servers: Vec<serde_json::Value>,
+}
+
+/// Response for the ACP `session/new` method.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionNewResponse {
+    pub session_id: String,
+}
+
+/// An embedded resource content block in a Zed ACP prompt.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionPromptResource {
+    pub uri: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+}
+
+/// A single content block inside a Zed ACP `session/prompt` message.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum SessionPromptContent {
+    Text { text: String },
+    Resource { resource: SessionPromptResource },
+    #[serde(other)]
+    Unknown,
+}
+
+/// Params for the Zed ACP `session/prompt` method.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionPromptParams {
+    pub session_id: String,
+    /// Content blocks — ACP sends an array of typed blocks.
+    #[serde(default)]
+    pub prompt: Vec<SessionPromptContent>,
+}
+
+/// Response for the Zed ACP `session/prompt` method.
+/// Sent only after the full turn completes (long-polling style).
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionPromptResponse {
+    pub stop_reason: String,
+}
+
+/// Params for the Zed ACP `session/cancel` notification (client → server).
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCancelParams {
+    pub session_id: String,
+}
+
+// ── Gap 4: session/request_permission ─────────────────────────────────────────
+
+/// A tool call reference inside `session/request_permission`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpToolCall {
+    pub id: String,
+    pub name: String,
+    pub input: serde_json::Value,
+}
+
+/// Outcome kinds offered in `session/request_permission`.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum AcpPermissionOptionKind {
+    AllowOnce,
+    AllowAlways,
+    RejectOnce,
+    RejectAlways,
+}
+
+impl AcpPermissionOptionKind {
+    pub fn to_review_decision(self) -> ReviewDecision {
+        match self {
+            AcpPermissionOptionKind::AllowOnce => ReviewDecision::Approved,
+            AcpPermissionOptionKind::AllowAlways => ReviewDecision::ApprovedForSession,
+            AcpPermissionOptionKind::RejectOnce => ReviewDecision::Denied,
+            AcpPermissionOptionKind::RejectAlways => ReviewDecision::Abort,
+        }
+    }
+}
+
+/// A single permission option presented to the client.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpPermissionOption {
+    pub label: String,
+    pub kind: AcpPermissionOptionKind,
+}
+
+/// Outcome chosen by the client in response to a `session/request_permission`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum AcpPermissionOutcome {
+    Option { kind: AcpPermissionOptionKind },
+}
+
+/// Params for the ACP `session/request_permission` server→client request.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpRequestPermissionParams {
+    pub session_id: String,
+    pub tool_call: AcpToolCall,
+    pub options: Vec<AcpPermissionOption>,
+}
+
+/// Response for the ACP `session/request_permission` server→client request.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpRequestPermissionResponse {
+    pub outcome: AcpPermissionOutcome,
+}
+
+// ── Gap 5: optional session lifecycle methods ──────────────────────────────────
+
+/// Params for ACP `session/close`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCloseParams {
+    pub session_id: String,
+}
+
+/// Response for ACP `session/close`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCloseResponse {}
+
+/// Summary of a single session returned by `session/list`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpSessionInfo {
+    pub session_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+}
+
+/// Params for ACP `session/list`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionListParams {}
+
+/// Response for ACP `session/list`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionListResponse {
+    pub sessions: Vec<AcpSessionInfo>,
+}
+
+/// Params for ACP `session/load` (resume with history replay).
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionLoadParams {
+    pub session_id: String,
+}
+
+/// Response for ACP `session/load`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionLoadResponse {
+    pub session_id: String,
+}
+
+/// Params for ACP `session/resume` (resume without history replay).
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionResumeParams {
+    pub session_id: String,
+}
+
+/// Response for ACP `session/resume`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionResumeResponse {
+    pub session_id: String,
+}
+
+/// Params for ACP `session/setConfigOption`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSetConfigOptionParams {
+    pub session_id: String,
+    pub key: String,
+    pub value: serde_json::Value,
+}
+
+/// Response for ACP `session/setConfigOption`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSetConfigOptionResponse {}
+
+/// Params for ACP `session/setMode`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSetModeParams {
+    pub session_id: String,
+    pub mode: String,
+}
+
+/// Response for ACP `session/setMode`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSetModeResponse {}
+
+/// Params for ACP `authenticate`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpAuthenticateParams {
+    pub method: String,
+    #[serde(default)]
+    pub credentials: serde_json::Value,
+}
+
+/// Response for ACP `authenticate`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpAuthenticateResponse {
+    pub authenticated: bool,
+}
+
+// ── Gap 6: terminal delegation methods (server→client requests) ───────────────
+
+/// Params for ACP `terminal/create` (server→client): asks the client to open
+/// a new terminal process and return a handle.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpTerminalCreateParams {
+    pub session_id: String,
+}
+
+/// Response for ACP `terminal/create`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpTerminalCreateResponse {
+    pub terminal_id: String,
+}
+
+/// Params for ACP `terminal/output` (server→client): writes data to the
+/// terminal's stdin.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpTerminalOutputParams {
+    pub terminal_id: String,
+    /// Base64-encoded bytes to write to the terminal's stdin.
+    pub data: String,
+}
+
+/// Response for ACP `terminal/output`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpTerminalOutputResponse {}
+
+/// Params for ACP `terminal/kill` (server→client): sends SIGKILL to the
+/// terminal process.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpTerminalKillParams {
+    pub terminal_id: String,
+}
+
+/// Response for ACP `terminal/kill`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpTerminalKillResponse {}
+
+/// Params for ACP `terminal/waitForExit` (server→client): blocks until the
+/// process exits and returns the exit code.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpTerminalWaitForExitParams {
+    pub terminal_id: String,
+}
+
+/// Response for ACP `terminal/waitForExit`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpTerminalWaitForExitResponse {
+    pub exit_code: i32,
+}
+
+/// Params for ACP `terminal/release` (server→client): releases the terminal
+/// handle without killing the process.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpTerminalReleaseParams {
+    pub terminal_id: String,
+}
+
+/// Response for ACP `terminal/release`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct AcpTerminalReleaseResponse {}
+
+/// A single ACP content block inside a `session/update` agentMessage update.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum AcpContentBlock {
+    Text { text: String },
+}
+
+/// Tagged payload for the ACP `session/update` server→client notification.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum SessionUpdatePayload {
+    /// Streaming assistant text delta.
+    AgentMessage {
+        role: String,
+        content: Vec<AcpContentBlock>,
+    },
+    /// Turn ended with an error.
+    Error { error: String },
+}
+
+/// Params for the ACP `session/update` server→client notification.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionUpdateNotification {
+    pub session_id: String,
+    pub update: SessionUpdatePayload,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema, TS)]

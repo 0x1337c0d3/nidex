@@ -1,6 +1,138 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
+    "AcpPermissionOption": {
+      "description": "A single permission option presented to the client.",
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/AcpPermissionOptionKind"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "label"
+      ],
+      "type": "object"
+    },
+    "AcpPermissionOptionKind": {
+      "description": "Outcome kinds offered in `session/request_permission`.",
+      "enum": [
+        "allow_once",
+        "allow_always",
+        "reject_once",
+        "reject_always"
+      ],
+      "type": "string"
+    },
+    "AcpRequestPermissionParams": {
+      "description": "Params for the ACP `session/request_permission` server→client request.",
+      "properties": {
+        "options": {
+          "items": {
+            "$ref": "#/definitions/AcpPermissionOption"
+          },
+          "type": "array"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "toolCall": {
+          "$ref": "#/definitions/AcpToolCall"
+        }
+      },
+      "required": [
+        "options",
+        "sessionId",
+        "toolCall"
+      ],
+      "type": "object"
+    },
+    "AcpTerminalCreateParams": {
+      "description": "Params for ACP `terminal/create` (server→client): asks the client to open a new terminal process and return a handle.",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "AcpTerminalKillParams": {
+      "description": "Params for ACP `terminal/kill` (server→client): sends SIGKILL to the terminal process.",
+      "properties": {
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "terminalId"
+      ],
+      "type": "object"
+    },
+    "AcpTerminalOutputParams": {
+      "description": "Params for ACP `terminal/output` (server→client): writes data to the terminal's stdin.",
+      "properties": {
+        "data": {
+          "description": "Base64-encoded bytes to write to the terminal's stdin.",
+          "type": "string"
+        },
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "data",
+        "terminalId"
+      ],
+      "type": "object"
+    },
+    "AcpTerminalReleaseParams": {
+      "description": "Params for ACP `terminal/release` (server→client): releases the terminal handle without killing the process.",
+      "properties": {
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "terminalId"
+      ],
+      "type": "object"
+    },
+    "AcpTerminalWaitForExitParams": {
+      "description": "Params for ACP `terminal/waitForExit` (server→client): blocks until the process exits and returns the exit code.",
+      "properties": {
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "terminalId"
+      ],
+      "type": "object"
+    },
+    "AcpToolCall": {
+      "description": "A tool call reference inside `session/request_permission`.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "input": true,
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "input",
+        "name"
+      ],
+      "type": "object"
+    },
     "ApplyPatchApprovalParams": {
       "properties": {
         "callId": {
@@ -496,7 +628,8 @@
           "format": "int64",
           "type": "integer"
         }
-      ]
+      ],
+      "description": "A JSON-RPC request identifier — either a string or an integer.\n\n`#[serde(untagged)]` is intentionally NOT used here. Untagged enum deserialization inside serde's internally-tagged `ClientRequest` enum (which uses `#[serde(tag = \"method\")]`) triggers a known serde limitation: the error from the first failed variant attempt (\"invalid type: integer, expected a string\") leaks out instead of being silently retried. A manual `Visitor` with `deserialize_any` avoids this."
     },
     "ThreadId": {
       "type": "string"
@@ -682,6 +815,156 @@
         "params"
       ],
       "title": "Item/tool/callRequest",
+      "type": "object"
+    },
+    {
+      "description": "ACP: server requests permission from the client for a tool call.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "session/request_permission"
+          ],
+          "title": "Session/requestPermissionRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AcpRequestPermissionParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Session/requestPermissionRequest",
+      "type": "object"
+    },
+    {
+      "description": "ACP Gap 6: terminal delegation — ask client to create a terminal process.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "terminal/create"
+          ],
+          "title": "Terminal/createRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AcpTerminalCreateParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Terminal/createRequest",
+      "type": "object"
+    },
+    {
+      "description": "ACP Gap 6: write data to a client-side terminal's stdin.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "terminal/output"
+          ],
+          "title": "Terminal/outputRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AcpTerminalOutputParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Terminal/outputRequest",
+      "type": "object"
+    },
+    {
+      "description": "ACP Gap 6: send SIGKILL to a client-side terminal process.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "terminal/kill"
+          ],
+          "title": "Terminal/killRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AcpTerminalKillParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Terminal/killRequest",
+      "type": "object"
+    },
+    {
+      "description": "ACP Gap 6: wait for a client-side terminal process to exit.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "terminal/waitForExit"
+          ],
+          "title": "Terminal/waitForExitRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AcpTerminalWaitForExitParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Terminal/waitForExitRequest",
+      "type": "object"
+    },
+    {
+      "description": "ACP Gap 6: release a client-side terminal handle without killing the process.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "terminal/release"
+          ],
+          "title": "Terminal/releaseRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AcpTerminalReleaseParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Terminal/releaseRequest",
       "type": "object"
     },
     {

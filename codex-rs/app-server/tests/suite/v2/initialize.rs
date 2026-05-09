@@ -33,7 +33,7 @@ async fn initialize_uses_client_info_name_as_originator() -> Result<()> {
     let JSONRPCMessage::Response(response) = message else {
         anyhow::bail!("expected initialize response, got {message:?}");
     };
-    let InitializeResponse { user_agent } = to_response::<InitializeResponse>(response)?;
+    let InitializeResponse { user_agent, .. } = to_response::<InitializeResponse>(response)?;
 
     assert!(user_agent.starts_with("codex_vscode/"));
     Ok(())
@@ -67,7 +67,7 @@ async fn initialize_respects_originator_override_env_var() -> Result<()> {
     let JSONRPCMessage::Response(response) = message else {
         anyhow::bail!("expected initialize response, got {message:?}");
     };
-    let InitializeResponse { user_agent } = to_response::<InitializeResponse>(response)?;
+    let InitializeResponse { user_agent, .. } = to_response::<InitializeResponse>(response)?;
 
     assert!(user_agent.starts_with("codex_originator_via_env_var/"));
     Ok(())

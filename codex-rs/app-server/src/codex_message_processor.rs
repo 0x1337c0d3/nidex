@@ -110,6 +110,29 @@ use codex_app_server_protocol::ThreadSetNameParams;
 use codex_app_server_protocol::ThreadSetNameResponse;
 use codex_app_server_protocol::ThreadSortKey;
 use codex_app_server_protocol::ThreadSourceKind;
+use codex_app_server_protocol::AcpAuthenticateParams;
+use codex_app_server_protocol::AcpAuthenticateResponse;
+use codex_app_server_protocol::AcpContentBlock;
+use codex_app_server_protocol::AcpSessionInfo;
+use codex_app_server_protocol::AcpSessionNewParams;
+use codex_app_server_protocol::SessionCloseParams;
+use codex_app_server_protocol::SessionCloseResponse;
+use codex_app_server_protocol::SessionListParams;
+use codex_app_server_protocol::SessionListResponse;
+use codex_app_server_protocol::SessionLoadParams;
+use codex_app_server_protocol::SessionLoadResponse;
+use codex_app_server_protocol::SessionNewResponse;
+use codex_app_server_protocol::SessionResumeParams;
+use codex_app_server_protocol::SessionResumeResponse;
+use codex_app_server_protocol::SessionSetConfigOptionParams;
+use codex_app_server_protocol::SessionSetConfigOptionResponse;
+use codex_app_server_protocol::SessionSetModeParams;
+use codex_app_server_protocol::SessionSetModeResponse;
+use codex_app_server_protocol::SessionUpdateNotification;
+use codex_app_server_protocol::SessionUpdatePayload;
+use codex_app_server_protocol::SessionPromptContent;
+use codex_app_server_protocol::SessionPromptParams;
+use codex_app_server_protocol::SessionPromptResponse;
 use codex_app_server_protocol::ThreadStartParams;
 use codex_app_server_protocol::ThreadStartResponse;
 use codex_app_server_protocol::ThreadStartedNotification;
@@ -215,6 +238,9 @@ pub(crate) type PendingInterrupts = Arc<Mutex<HashMap<ThreadId, PendingInterrupt
 
 pub(crate) type PendingRollbacks = Arc<Mutex<HashMap<ThreadId, RequestId>>>;
 
+/// Maps thread_id (as string) → pending session/prompt request_id for ACP sessions.
+pub(crate) type PendingAcpPrompts = Arc<Mutex<HashMap<String, RequestId>>>;
+
 /// Per-conversation accumulation of the latest states e.g. error message while a turn runs.
 #[derive(Default, Clone)]
 pub(crate) struct TurnSummary {
@@ -260,12 +286,17 @@ pub(crate) struct CodexMessageProcessor {
     pending_rollbacks: PendingRollbacks,
     turn_summary_store: TurnSummaryStore,
     pending_fuzzy_searches: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+    // Pending ACP session/prompt requests — reply with stopReason when turn completes.
+    pending_acp_prompts: PendingAcpPrompts,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum ApiVersion {
     V1,
     V2,
+    /// ACP session started via `session/new` / `session/prompt`. Uses
+    /// `session/request_permission` for approval flows.
+    Acp,
 }
 
 pub(crate) struct CodexMessageProcessorArgs {
@@ -327,6 +358,7 @@ impl CodexMessageProcessor {
             pending_rollbacks: Arc::new(Mutex::new(HashMap::new())),
             turn_summary_store: Arc::new(Mutex::new(HashMap::new())),
             pending_fuzzy_searches: Arc::new(Mutex::new(HashMap::new())),
+            pending_acp_prompts: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -408,7 +440,15 @@ impl CodexMessageProcessor {
             }
             // === v2 Thread/Turn APIs ===
             ClientRequest::ThreadStart { request_id, params } => {
-                self.thread_start(request_id, params).await;
+                self.thread_start(request_id, params, false).await;
+            }
+            ClientRequest::SessionNew { request_id, params } => {
+                let AcpSessionNewParams { cwd, mcp_servers: _ } = params;
+                let thread_params = ThreadStartParams {
+                    cwd: Some(cwd),
+                    ..Default::default()
+                };
+                self.thread_start(request_id, thread_params, true).await;
             }
             ClientRequest::ThreadResume { request_id, params } => {
                 self.thread_resume(request_id, params).await;
@@ -447,7 +487,31 @@ impl CodexMessageProcessor {
                 self.skills_config_write(request_id, params).await;
             }
             ClientRequest::TurnStart { request_id, params } => {
-                self.turn_start(request_id, params).await;
+                self.turn_start(request_id, params, false).await;
+            }
+            ClientRequest::SessionPrompt { request_id, params } => {
+                self.session_prompt(request_id, params).await;
+            }
+            ClientRequest::SessionClose { request_id, params } => {
+                self.session_close(request_id, params).await;
+            }
+            ClientRequest::SessionList { request_id, params } => {
+                self.session_list(request_id, params).await;
+            }
+            ClientRequest::SessionLoad { request_id, params } => {
+                self.session_load(request_id, params).await;
+            }
+            ClientRequest::SessionResume { request_id, params } => {
+                self.session_resume_acp(request_id, params).await;
+            }
+            ClientRequest::SessionSetConfigOption { request_id, params } => {
+                self.session_set_config_option(request_id, params).await;
+            }
+            ClientRequest::SessionSetMode { request_id, params } => {
+                self.session_set_mode(request_id, params).await;
+            }
+            ClientRequest::AcpAuthenticate { request_id, params } => {
+                self.acp_authenticate(request_id, params).await;
             }
             ClientRequest::TurnInterrupt { request_id, params } => {
                 self.turn_interrupt(request_id, params).await;
@@ -1169,7 +1233,7 @@ impl CodexMessageProcessor {
         }
     }
 
-    async fn thread_start(&mut self, request_id: RequestId, params: ThreadStartParams) {
+    async fn thread_start(&mut self, request_id: RequestId, params: ThreadStartParams, acp_session: bool) {
         let ThreadStartParams {
             model,
             model_provider,
@@ -1279,23 +1343,19 @@ impl CodexMessageProcessor {
                     None => build_ephemeral_thread(thread_id, &config_snapshot),
                 };
 
-                let response = ThreadStartResponse {
-                    thread: thread.clone(),
-                    model: config_snapshot.model,
-                    model_provider: config_snapshot.model_provider_id,
-                    cwd: config_snapshot.cwd,
-                    approval_policy: config_snapshot.approval_policy.into(),
-                    sandbox: config_snapshot.sandbox_policy.into(),
-                    reasoning_effort: config_snapshot.reasoning_effort,
-                };
-
                 // Auto-attach a thread listener when starting a thread.
-                // Use the same behavior as the v1 API, with opt-in support for raw item events.
+                // ACP sessions use a distinct ApiVersion so the event pipeline
+                // can route approvals through session/request_permission.
+                let listener_api_version = if acp_session {
+                    ApiVersion::Acp
+                } else {
+                    ApiVersion::V2
+                };
                 if let Err(err) = self
                     .attach_conversation_listener(
                         thread_id,
                         experimental_raw_events,
-                        ApiVersion::V2,
+                        listener_api_version,
                     )
                     .await
                 {
@@ -1306,7 +1366,23 @@ impl CodexMessageProcessor {
                     );
                 }
 
-                self.outgoing.send_response(request_id, response).await;
+                if acp_session {
+                    let response = SessionNewResponse {
+                        session_id: thread_id.to_string(),
+                    };
+                    self.outgoing.send_response(request_id, response).await;
+                } else {
+                    let response = ThreadStartResponse {
+                        thread: thread.clone(),
+                        model: config_snapshot.model,
+                        model_provider: config_snapshot.model_provider_id,
+                        cwd: config_snapshot.cwd,
+                        approval_policy: config_snapshot.approval_policy.into(),
+                        sandbox: config_snapshot.sandbox_policy.into(),
+                        reasoning_effort: config_snapshot.reasoning_effort,
+                    };
+                    self.outgoing.send_response(request_id, response).await;
+                }
 
                 let notif = ThreadStartedNotification { thread };
                 self.outgoing
@@ -3596,10 +3672,183 @@ impl CodexMessageProcessor {
         let _ = conversation.submit(Op::Interrupt).await;
     }
 
-    async fn turn_start(&self, request_id: RequestId, params: TurnStartParams) {
+    async fn session_prompt(&self, request_id: RequestId, params: SessionPromptParams) {
+        let session_id = params.session_id.clone();
+        let text = params
+            .prompt
+            .into_iter()
+            .filter_map(|item| match item {
+                SessionPromptContent::Text { text } => Some(text),
+                SessionPromptContent::Resource { resource } => resource.text,
+                SessionPromptContent::Unknown => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let turn_params = TurnStartParams {
+            thread_id: session_id.clone(),
+            input: vec![V2UserInput::Text {
+                text,
+                text_elements: vec![],
+            }],
+            cwd: None,
+            approval_policy: None,
+            sandbox_policy: None,
+            model: None,
+            effort: None,
+            summary: None,
+            output_schema: None,
+            collaboration_mode: None,
+        };
+        // Register pending BEFORE starting the turn to avoid a TurnComplete race.
+        self.pending_acp_prompts
+            .lock()
+            .await
+            .insert(session_id.clone(), request_id.clone());
+        self.turn_start(request_id, turn_params, true).await;
+    }
+
+    pub(crate) async fn session_cancel(&self, session_id: String) {
+        let thread = match self.load_thread(&session_id).await {
+            Ok((_, thread)) => thread,
+            Err(_) => return,
+        };
+
+        let pending_request_id = self
+            .pending_acp_prompts
+            .lock()
+            .await
+            .remove(&session_id);
+
+        let _ = thread.submit(Op::Interrupt).await;
+
+        if let Some(request_id) = pending_request_id {
+            self.outgoing
+                .send_response(
+                    request_id,
+                    SessionPromptResponse {
+                        stop_reason: "cancelled".to_string(),
+                    },
+                )
+                .await;
+        }
+    }
+
+    // ── Gap 5: session lifecycle methods ──────────────────────────────────────
+
+    async fn session_close(&mut self, request_id: RequestId, params: SessionCloseParams) {
+        let session_id = params.session_id;
+        // Reuse cancel logic: interrupt any active turn, then clean up.
+        self.session_cancel(session_id.clone()).await;
+        // Drop any attached listener for this session.
+        let thread_id = match ThreadId::from_string(&session_id) {
+            Ok(id) => id,
+            Err(_) => {
+                self.outgoing.send_response(request_id, SessionCloseResponse {}).await;
+                return;
+            }
+        };
+        let to_remove: Vec<Uuid> = self
+            .listener_thread_ids_by_subscription
+            .iter()
+            .filter_map(|(sub_id, tid)| (*tid == thread_id).then_some(*sub_id))
+            .collect();
+        for sub_id in to_remove {
+            self.listener_thread_ids_by_subscription.remove(&sub_id);
+            if let Some(cancel_tx) = self.conversation_listeners.remove(&sub_id) {
+                let _ = cancel_tx.send(());
+            }
+        }
+        self.outgoing.send_response(request_id, SessionCloseResponse {}).await;
+    }
+
+    async fn session_list(&self, request_id: RequestId, _params: SessionListParams) {
+        let sessions = self
+            .thread_manager
+            .list_thread_ids()
+            .await
+            .into_iter()
+            .map(|tid| AcpSessionInfo {
+                session_id: tid.to_string(),
+                cwd: None,
+            })
+            .collect();
+        self.outgoing
+            .send_response(request_id, SessionListResponse { sessions })
+            .await;
+    }
+
+    async fn session_load(&self, request_id: RequestId, params: SessionLoadParams) {
+        // Verify the thread exists; auto-attach a listener so updates flow through.
+        match self.load_thread(&params.session_id).await {
+            Ok((thread_id, _)) => {
+                self.outgoing
+                    .send_response(request_id, SessionLoadResponse {
+                        session_id: thread_id.to_string(),
+                    })
+                    .await;
+            }
+            Err(err) => {
+                self.outgoing.send_error(request_id, err).await;
+            }
+        }
+    }
+
+    async fn session_resume_acp(&self, request_id: RequestId, params: SessionResumeParams) {
+        match self.load_thread(&params.session_id).await {
+            Ok((thread_id, _)) => {
+                self.outgoing
+                    .send_response(request_id, SessionResumeResponse {
+                        session_id: thread_id.to_string(),
+                    })
+                    .await;
+            }
+            Err(err) => {
+                self.outgoing.send_error(request_id, err).await;
+            }
+        }
+    }
+
+    async fn session_set_config_option(
+        &self,
+        request_id: RequestId,
+        _params: SessionSetConfigOptionParams,
+    ) {
+        // Stub: config changes at session scope are not yet wired up.
+        self.outgoing
+            .send_response(request_id, SessionSetConfigOptionResponse {})
+            .await;
+    }
+
+    async fn session_set_mode(&self, request_id: RequestId, _params: SessionSetModeParams) {
+        // Stub: mode switching is not yet wired up.
+        self.outgoing
+            .send_response(request_id, SessionSetModeResponse {})
+            .await;
+    }
+
+    async fn acp_authenticate(&self, request_id: RequestId, _params: AcpAuthenticateParams) {
+        // Report whether the server currently has valid credentials.
+        let authenticated = if !self.config.model_provider.requires_openai_auth {
+            true
+        } else {
+            matches!(
+                self.auth_manager.auth().await,
+                Some(auth) if auth.get_token().is_ok_and(|t| !t.is_empty())
+            )
+        };
+        self.outgoing
+            .send_response(request_id, AcpAuthenticateResponse { authenticated })
+            .await;
+    }
+
+    async fn turn_start(&self, request_id: RequestId, params: TurnStartParams, acp_session: bool) {
+        let thread_id_str = params.thread_id.clone();
         let (_, thread) = match self.load_thread(&params.thread_id).await {
             Ok(v) => v,
             Err(error) => {
+                if acp_session {
+                    self.pending_acp_prompts.lock().await.remove(&thread_id_str);
+                }
                 self.outgoing.send_error(request_id, error).await;
                 return;
             }
@@ -3652,8 +3901,11 @@ impl CodexMessageProcessor {
                     status: TurnStatus::InProgress,
                 };
 
-                let response = TurnStartResponse { turn: turn.clone() };
-                self.outgoing.send_response(request_id, response).await;
+                if !acp_session {
+                    let response = TurnStartResponse { turn: turn.clone() };
+                    self.outgoing.send_response(request_id, response).await;
+                }
+                // For ACP sessions: response is deferred until TurnComplete fires.
 
                 // Emit v2 turn/started notification.
                 let notif = TurnStartedNotification {
@@ -3665,6 +3917,9 @@ impl CodexMessageProcessor {
                     .await;
             }
             Err(err) => {
+                if acp_session {
+                    self.pending_acp_prompts.lock().await.remove(&thread_id_str);
+                }
                 let error = JSONRPCErrorError {
                     code: INTERNAL_ERROR_CODE,
                     message: format!("failed to start turn: {err}"),
@@ -4003,6 +4258,7 @@ impl CodexMessageProcessor {
         let pending_interrupts = self.pending_interrupts.clone();
         let pending_rollbacks = self.pending_rollbacks.clone();
         let turn_summary_store = self.turn_summary_store.clone();
+        let pending_acp_prompts = self.pending_acp_prompts.clone();
         let api_version_for_task = api_version;
         let fallback_model_provider = self.config.model_provider_id.clone();
         tokio::spawn(async move {
@@ -4025,6 +4281,48 @@ impl CodexMessageProcessor {
                             && !experimental_raw_events {
                                 continue;
                             }
+
+                        // ACP protocol: translate events for sessions started via session/prompt.
+                        let thread_id_str = conversation_id.to_string();
+                        let pending_request_id = pending_acp_prompts
+                            .lock()
+                            .await
+                            .get(&thread_id_str)
+                            .cloned();
+                        if pending_request_id.is_some() {
+                            match &event.msg {
+                                EventMsg::AgentMessageContentDelta(delta) => {
+                                    let notification = ServerNotification::SessionUpdate(
+                                        SessionUpdateNotification {
+                                            session_id: thread_id_str.clone(),
+                                            update: SessionUpdatePayload::AgentMessage {
+                                                role: "assistant".to_string(),
+                                                content: vec![AcpContentBlock::Text {
+                                                    text: delta.delta.clone(),
+                                                }],
+                                            },
+                                        },
+                                    );
+                                    outgoing_for_task
+                                        .send_server_notification(notification)
+                                        .await;
+                                }
+                                EventMsg::TurnComplete(_) => {
+                                    let request_id = pending_acp_prompts
+                                        .lock()
+                                        .await
+                                        .remove(&thread_id_str);
+                                    if let Some(request_id) = request_id {
+                                        outgoing_for_task
+                                            .send_response(request_id, SessionPromptResponse {
+                                                stop_reason: "end_turn".to_string(),
+                                            })
+                                            .await;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
 
                         // For now, we send a notification for every event,
                         // JSON-serializing the `Event` as-is, but these should

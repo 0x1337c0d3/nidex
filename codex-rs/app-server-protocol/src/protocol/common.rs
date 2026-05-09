@@ -178,6 +178,53 @@ client_request_definitions! {
         inspect_params: true,
         response: v2::ThreadStartResponse,
     },
+    /// ACP session/new: standard ACP session creation (cwd + mcpServers).
+    SessionNew => "session/new" {
+        params: v1::AcpSessionNewParams,
+        response: v1::SessionNewResponse,
+    },
+    /// Zed ACP: send a prompt to an existing session.
+    SessionPrompt => "session/prompt" {
+        params: v1::SessionPromptParams,
+        response: v1::SessionPromptResponse,
+    },
+
+    /// ACP Gap 5: close a session (terminate the running turn and clean up).
+    SessionClose => "session/close" {
+        params: v1::SessionCloseParams,
+        response: v1::SessionCloseResponse,
+    },
+    /// ACP Gap 5: list active sessions.
+    SessionList => "session/list" {
+        params: v1::SessionListParams,
+        response: v1::SessionListResponse,
+    },
+    /// ACP Gap 5: resume a session with history replay.
+    SessionLoad => "session/load" {
+        params: v1::SessionLoadParams,
+        response: v1::SessionLoadResponse,
+    },
+    /// ACP Gap 5: resume a session without history replay.
+    SessionResume => "session/resume" {
+        params: v1::SessionResumeParams,
+        response: v1::SessionResumeResponse,
+    },
+    /// ACP Gap 5: set a runtime config option on a session (stub).
+    SessionSetConfigOption => "session/setConfigOption" {
+        params: v1::SessionSetConfigOptionParams,
+        response: v1::SessionSetConfigOptionResponse,
+    },
+    /// ACP Gap 5: switch the agent mode for a session (stub).
+    SessionSetMode => "session/setMode" {
+        params: v1::SessionSetModeParams,
+        response: v1::SessionSetModeResponse,
+    },
+    /// ACP Gap 5: pre-session auth handshake.
+    AcpAuthenticate => "authenticate" {
+        params: v1::AcpAuthenticateParams,
+        response: v1::AcpAuthenticateResponse,
+    },
+
     ThreadResume => "thread/resume" {
         params: v2::ThreadResumeParams,
         response: v2::ThreadResumeResponse,
@@ -557,7 +604,7 @@ macro_rules! client_notification_definitions {
         pub fn export_client_notification_schemas(
             _out_dir: &::std::path::Path,
         ) -> ::anyhow::Result<Vec<GeneratedSchema>> {
-            let schemas = Vec::new();
+            let mut schemas = Vec::new();
             $( $(schemas.push(crate::export::write_json_schema::<$payload>(_out_dir, stringify!($payload))?);)? )*
             Ok(schemas)
         }
@@ -598,6 +645,38 @@ server_request_definitions! {
     DynamicToolCall => "item/tool/call" {
         params: v2::DynamicToolCallParams,
         response: v2::DynamicToolCallResponse,
+    },
+
+    /// ACP: server requests permission from the client for a tool call.
+    SessionRequestPermission => "session/request_permission" {
+        params: v1::AcpRequestPermissionParams,
+        response: v1::AcpRequestPermissionResponse,
+    },
+
+    /// ACP Gap 6: terminal delegation — ask client to create a terminal process.
+    TerminalCreate => "terminal/create" {
+        params: v1::AcpTerminalCreateParams,
+        response: v1::AcpTerminalCreateResponse,
+    },
+    /// ACP Gap 6: write data to a client-side terminal's stdin.
+    TerminalOutput => "terminal/output" {
+        params: v1::AcpTerminalOutputParams,
+        response: v1::AcpTerminalOutputResponse,
+    },
+    /// ACP Gap 6: send SIGKILL to a client-side terminal process.
+    TerminalKill => "terminal/kill" {
+        params: v1::AcpTerminalKillParams,
+        response: v1::AcpTerminalKillResponse,
+    },
+    /// ACP Gap 6: wait for a client-side terminal process to exit.
+    TerminalWaitForExit => "terminal/waitForExit" {
+        params: v1::AcpTerminalWaitForExitParams,
+        response: v1::AcpTerminalWaitForExitResponse,
+    },
+    /// ACP Gap 6: release a client-side terminal handle without killing the process.
+    TerminalRelease => "terminal/release" {
+        params: v1::AcpTerminalReleaseParams,
+        response: v1::AcpTerminalReleaseResponse,
     },
 
     /// DEPRECATED APIs below
@@ -680,6 +759,9 @@ server_notification_definitions! {
     #[strum(serialize = "account/login/completed")]
     AccountLoginCompleted(v2::AccountLoginCompletedNotification),
 
+    /// ACP `session/update`: typed real-time progress notification (server→client).
+    SessionUpdate => "session/update" (v1::SessionUpdateNotification),
+
     /// DEPRECATED NOTIFICATIONS below
     AuthStatusChange(v1::AuthStatusChangeNotification),
     SessionConfigured(v1::SessionConfiguredNotification),
@@ -687,6 +769,9 @@ server_notification_definitions! {
 
 client_notification_definitions! {
     Initialized,
+    /// Zed ACP: client requests cancellation of the current turn.
+    #[serde(rename = "session/cancel")]
+    SessionCancel(v1::SessionCancelParams),
 }
 
 #[cfg(test)]
@@ -965,5 +1050,32 @@ mod tests {
         };
         let reason = crate::experimental_api::ExperimentalApi::experimental_reason(&request);
         assert_eq!(reason, Some("thread/start.mockExperimentalField"));
+    }
+
+    /// Regression test: Zed (and other ACP clients) send integer request ids.
+    /// `RequestId` is nested inside the internally-tagged `ClientRequest` enum
+    /// (`#[serde(tag = "method")]`). With `#[serde(untagged)]` on `RequestId`
+    /// the auto-derived Deserialize leaks the "expected a string" error from the
+    /// first failing variant, breaking deserialization. The manual `Visitor`
+    /// implementation in `jsonrpc_lite.rs` fixes this.
+    #[test]
+    fn initialize_with_integer_request_id_deserializes() -> Result<()> {
+        let json = serde_json::json!({
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-05-12",
+                "clientCapabilities": {},
+            }
+        });
+        let request: ClientRequest = serde_json::from_value(json)?;
+        assert!(matches!(
+            request,
+            ClientRequest::Initialize {
+                request_id: RequestId::Integer(1),
+                ..
+            }
+        ));
+        Ok(())
     }
 }

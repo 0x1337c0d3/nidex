@@ -54,6 +54,31 @@
       },
       "type": "object"
     },
+    "AcpContentBlock": {
+      "description": "A single ACP content block inside a `session/update` agentMessage update.",
+      "oneOf": [
+        {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "text"
+              ],
+              "title": "TextAcpContentBlockType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text",
+            "type"
+          ],
+          "title": "TextAcpContentBlock",
+          "type": "object"
+        }
+      ]
+    },
     "AgentMessageContent": {
       "oneOf": [
         {
@@ -5322,6 +5347,76 @@
         }
       ]
     },
+    "SessionUpdateNotification": {
+      "description": "Params for the ACP `session/update` server→client notification.",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "update": {
+          "$ref": "#/definitions/SessionUpdatePayload"
+        }
+      },
+      "required": [
+        "sessionId",
+        "update"
+      ],
+      "type": "object"
+    },
+    "SessionUpdatePayload": {
+      "description": "Tagged payload for the ACP `session/update` server→client notification.",
+      "oneOf": [
+        {
+          "description": "Streaming assistant text delta.",
+          "properties": {
+            "content": {
+              "items": {
+                "$ref": "#/definitions/AcpContentBlock"
+              },
+              "type": "array"
+            },
+            "role": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "agentMessage"
+              ],
+              "title": "AgentMessageSessionUpdatePayloadType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content",
+            "role",
+            "type"
+          ],
+          "title": "AgentMessageSessionUpdatePayload",
+          "type": "object"
+        },
+        {
+          "description": "Turn ended with an error.",
+          "properties": {
+            "error": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "error"
+              ],
+              "title": "ErrorSessionUpdatePayloadType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "error",
+            "type"
+          ],
+          "title": "ErrorSessionUpdatePayload",
+          "type": "object"
+        }
+      ]
+    },
     "SkillDependencies": {
       "properties": {
         "tools": {
@@ -7811,6 +7906,27 @@
         "params"
       ],
       "title": "Account/login/completedNotification",
+      "type": "object"
+    },
+    {
+      "description": "ACP `session/update`: typed real-time progress notification (server→client).",
+      "properties": {
+        "method": {
+          "enum": [
+            "session/update"
+          ],
+          "title": "Session/updateNotificationMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionUpdateNotification"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "title": "Session/updateNotification",
       "type": "object"
     },
     {

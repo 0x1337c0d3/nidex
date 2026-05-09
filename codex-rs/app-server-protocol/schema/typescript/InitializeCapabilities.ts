@@ -9,4 +9,8 @@ export type InitializeCapabilities = {
 /**
  * Opt into receiving experimental API methods and fields.
  */
-experimentalApi: boolean, };
+experimentalApi: boolean, 
+/**
+ * Client supports delegated terminal execution (`terminal/*` server→client requests).
+ */
+terminal: boolean, };

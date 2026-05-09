@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "AcpPermissionOptionKind": {
+      "description": "Outcome kinds offered in `session/request_permission`.",
+      "enum": [
+        "allow_once",
+        "allow_always",
+        "reject_once",
+        "reject_always"
+      ],
+      "type": "string"
+    },
+    "AcpPermissionOutcome": {
+      "description": "Outcome chosen by the client in response to a `session/request_permission`.",
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "$ref": "#/definitions/AcpPermissionOptionKind"
+            },
+            "type": {
+              "enum": [
+                "option"
+              ],
+              "title": "OptionAcpPermissionOutcomeType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "type"
+          ],
+          "title": "OptionAcpPermissionOutcome",
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "description": "Response for the ACP `session/request_permission` server→client request.",
+  "properties": {
+    "outcome": {
+      "$ref": "#/definitions/AcpPermissionOutcome"
+    }
+  },
+  "required": [
+    "outcome"
+  ],
+  "title": "AcpRequestPermissionResponse",
+  "type": "object"
+}

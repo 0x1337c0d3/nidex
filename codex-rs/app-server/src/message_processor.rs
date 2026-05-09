@@ -9,7 +9,8 @@ use crate::config_api::ConfigApi;
 use crate::error_code::INVALID_REQUEST_ERROR_CODE;
 use crate::outgoing_message::OutgoingMessageSender;
 use async_trait::async_trait;
-use codex_app_server_protocol::ClientInfo;
+use codex_app_server_protocol::AgentCapabilities;
+use codex_app_server_protocol::AgentInfo;
 use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::ConfigBatchWriteParams;
 use codex_app_server_protocol::ConfigReadParams;
@@ -17,6 +18,7 @@ use codex_app_server_protocol::ConfigValueWriteParams;
 use codex_app_server_protocol::ConfigWarningNotification;
 use codex_app_server_protocol::ExperimentalApi;
 use codex_app_server_protocol::InitializeResponse;
+use codex_app_server_protocol::PromptCapabilities;
 use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::JSONRPCErrorError;
 use codex_app_server_protocol::JSONRPCNotification;
@@ -73,6 +75,8 @@ pub(crate) struct MessageProcessor {
     config: Arc<Config>,
     initialized: bool,
     experimental_api_enabled: Arc<AtomicBool>,
+    /// Gap 6: whether the connected client supports terminal delegation.
+    client_terminal_capable: Arc<AtomicBool>,
     config_warnings: Vec<ConfigWarningNotification>,
 }
 
@@ -137,6 +141,7 @@ impl MessageProcessor {
             config,
             initialized: false,
             experimental_api_enabled,
+            client_terminal_capable: Arc::new(AtomicBool::new(false)),
             config_warnings,
         }
     }
@@ -183,16 +188,22 @@ impl MessageProcessor {
                     return;
                 } else {
                     let experimental_api_enabled = params
-                        .capabilities
+                        .client_capabilities
                         .as_ref()
                         .is_some_and(|cap| cap.experimental_api);
                     self.experimental_api_enabled
                         .store(experimental_api_enabled, Ordering::Relaxed);
-                    let ClientInfo {
-                        name,
-                        title: _title,
-                        version,
-                    } = params.client_info;
+                    // Gap 6: record whether the client can handle terminal delegation.
+                    let client_terminal_capable = params
+                        .client_capabilities
+                        .as_ref()
+                        .is_some_and(|cap| cap.terminal);
+                    self.client_terminal_capable
+                        .store(client_terminal_capable, Ordering::Relaxed);
+                    let (name, version) = params
+                        .client_info
+                        .map(|ci| (ci.name, ci.version))
+                        .unwrap_or_default();
                     if let Err(error) = set_default_originator(name.clone()) {
                         match error {
                             SetOriginatorError::InvalidHeaderValue => {
@@ -221,7 +232,33 @@ impl MessageProcessor {
                     }
 
                     let user_agent = get_codex_user_agent();
-                    let response = InitializeResponse { user_agent };
+                    let negotiated_version = params
+                        .protocol_version
+                        .unwrap_or_else(|| "2025-05-12".to_string());
+                    let response = InitializeResponse {
+                        user_agent,
+                        protocol_version: negotiated_version,
+                        agent_capabilities: Some(AgentCapabilities {
+                            // Gap 5: all session lifecycle methods implemented.
+                            load_session: true,
+                            close_session: true,
+                            list_sessions: true,
+                            resume_session: true,
+                            authenticate: true,
+                            prompt_capabilities: Some(PromptCapabilities {
+                                image: true,
+                                audio: false,
+                                embedded_context: false,
+                            }),
+                            mcp_capabilities: None,
+                        }),
+                        agent_info: Some(AgentInfo {
+                            name: "codex".to_string(),
+                            title: "Codex".to_string(),
+                            version: env!("CARGO_PKG_VERSION").to_string(),
+                        }),
+                        auth_methods: Some(vec![]),
+                    };
                     self.outgoing.send_response(request_id, response).await;
 
                     self.initialized = true;
@@ -285,10 +322,21 @@ impl MessageProcessor {
         }
     }
 
-    pub(crate) async fn process_notification(&self, notification: JSONRPCNotification) {
-        // Currently, we do not expect to receive any notifications from the
-        // client, so we just log them.
-        tracing::info!("<- notification: {:?}", notification);
+    pub(crate) async fn process_notification(&mut self, notification: JSONRPCNotification) {
+        use codex_app_server_protocol::ClientNotification;
+        match serde_json::from_value::<ClientNotification>(
+            serde_json::to_value(&notification).unwrap_or_default(),
+        ) {
+            Ok(ClientNotification::SessionCancel(params)) => {
+                self.codex_message_processor
+                    .session_cancel(params.session_id)
+                    .await;
+            }
+            Ok(ClientNotification::Initialized) => {}
+            Err(_) => {
+                tracing::info!("<- notification: {:?}", notification);
+            }
+        }
     }
 
     pub(crate) fn thread_created_receiver(&self) -> broadcast::Receiver<ThreadId> {

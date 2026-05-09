@@ -4,4 +4,8 @@
 import type { ClientInfo } from "./ClientInfo";
 import type { InitializeCapabilities } from "./InitializeCapabilities";
 
-export type InitializeParams = { clientInfo: ClientInfo, capabilities: InitializeCapabilities | null, };
+export type InitializeParams = { 
+/**
+ * ACP protocol version the client wishes to use (e.g. `"2025-05-12"`).
+ */
+protocolVersion: string | null, clientInfo: ClientInfo | null, clientCapabilities: InitializeCapabilities | null, };

@@ -29,13 +29,18 @@
           "default": false,
           "description": "Opt into receiving experimental API methods and fields.",
           "type": "boolean"
+        },
+        "terminal": {
+          "default": false,
+          "description": "Client supports delegated terminal execution (`terminal/*` server→client requests).",
+          "type": "boolean"
         }
       },
       "type": "object"
     }
   },
   "properties": {
-    "capabilities": {
+    "clientCapabilities": {
       "anyOf": [
         {
           "$ref": "#/definitions/InitializeCapabilities"
@@ -46,12 +51,23 @@
       ]
     },
     "clientInfo": {
-      "$ref": "#/definitions/ClientInfo"
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ClientInfo"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "protocolVersion": {
+      "description": "ACP protocol version the client wishes to use (e.g. `\"2025-05-12\"`).",
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
-  "required": [
-    "clientInfo"
-  ],
   "title": "InitializeParams",
   "type": "object"
 }

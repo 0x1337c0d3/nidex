@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Params for ACP `terminal/output` (server→client): writes data to the terminal's stdin.",
+  "properties": {
+    "data": {
+      "description": "Base64-encoded bytes to write to the terminal's stdin.",
+      "type": "string"
+    },
+    "terminalId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "data",
+    "terminalId"
+  ],
+  "title": "AcpTerminalOutputParams",
+  "type": "object"
+}

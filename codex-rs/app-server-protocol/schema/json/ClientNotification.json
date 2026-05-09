@@ -1,5 +1,19 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "SessionCancelParams": {
+      "description": "Params for the Zed ACP `session/cancel` notification (client → server).",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    }
+  },
   "oneOf": [
     {
       "properties": {
@@ -15,6 +29,27 @@
         "method"
       ],
       "title": "InitializedNotification",
+      "type": "object"
+    },
+    {
+      "description": "Zed ACP: client requests cancellation of the current turn.",
+      "properties": {
+        "method": {
+          "enum": [
+            "session/cancel"
+          ],
+          "title": "Session/cancelNotificationMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionCancelParams"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "title": "Session/cancelNotification",
       "type": "object"
     }
   ],

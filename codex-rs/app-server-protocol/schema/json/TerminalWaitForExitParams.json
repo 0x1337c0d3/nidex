@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Params for ACP `terminal/waitForExit` (server→client): blocks until the process exits and returns the exit code.",
+  "properties": {
+    "terminalId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "terminalId"
+  ],
+  "title": "AcpTerminalWaitForExitParams",
+  "type": "object"
+}

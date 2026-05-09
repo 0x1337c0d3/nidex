@@ -8,12 +8,45 @@ use ts_rs::TS;
 
 pub const JSONRPC_VERSION: &str = "2.0";
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Hash, Eq, JsonSchema, TS)]
+/// A JSON-RPC request identifier — either a string or an integer.
+///
+/// `#[serde(untagged)]` is intentionally NOT used here. Untagged enum
+/// deserialization inside serde's internally-tagged `ClientRequest` enum
+/// (which uses `#[serde(tag = "method")]`) triggers a known serde limitation:
+/// the error from the first failed variant attempt ("invalid type: integer,
+/// expected a string") leaks out instead of being silently retried. A manual
+/// `Visitor` with `deserialize_any` avoids this.
+#[derive(Debug, Clone, PartialEq, Serialize, Hash, Eq, JsonSchema, TS)]
 #[serde(untagged)]
 pub enum RequestId {
     String(String),
     #[ts(type = "number")]
     Integer(i64),
+}
+
+impl<'de> Deserialize<'de> for RequestId {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> serde::de::Visitor<'de> for Visitor {
+            type Value = RequestId;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a string or integer request id")
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> std::result::Result<RequestId, E> {
+                Ok(RequestId::String(v.to_owned()))
+            }
+            fn visit_string<E: serde::de::Error>(self, v: String) -> std::result::Result<RequestId, E> {
+                Ok(RequestId::String(v))
+            }
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> std::result::Result<RequestId, E> {
+                Ok(RequestId::Integer(v))
+            }
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> std::result::Result<RequestId, E> {
+                Ok(RequestId::Integer(v as i64))
+            }
+        }
+        deserializer.deserialize_any(Visitor)
+    }
 }
 
 pub type Result = serde_json::Value;

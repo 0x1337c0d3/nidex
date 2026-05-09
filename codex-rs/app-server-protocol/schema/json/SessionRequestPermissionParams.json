@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "AcpPermissionOption": {
+      "description": "A single permission option presented to the client.",
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/AcpPermissionOptionKind"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "label"
+      ],
+      "type": "object"
+    },
+    "AcpPermissionOptionKind": {
+      "description": "Outcome kinds offered in `session/request_permission`.",
+      "enum": [
+        "allow_once",
+        "allow_always",
+        "reject_once",
+        "reject_always"
+      ],
+      "type": "string"
+    },
+    "AcpToolCall": {
+      "description": "A tool call reference inside `session/request_permission`.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "input": true,
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "input",
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "Params for the ACP `session/request_permission` server→client request.",
+  "properties": {
+    "options": {
+      "items": {
+        "$ref": "#/definitions/AcpPermissionOption"
+      },
+      "type": "array"
+    },
+    "sessionId": {
+      "type": "string"
+    },
+    "toolCall": {
+      "$ref": "#/definitions/AcpToolCall"
+    }
+  },
+  "required": [
+    "options",
+    "sessionId",
+    "toolCall"
+  ],
+  "title": "AcpRequestPermissionParams",
+  "type": "object"
+}

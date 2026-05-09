@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Params for the ACP `session/new` method. ACP only requires `cwd` and `mcpServers`; all codex-specific fields are supplied by server defaults or ignored until later gaps are addressed.",
+  "properties": {
+    "cwd": {
+      "type": "string"
+    },
+    "mcpServers": {
+      "default": [],
+      "items": true,
+      "type": "array"
+    }
+  },
+  "required": [
+    "cwd"
+  ],
+  "title": "AcpSessionNewParams",
+  "type": "object"
+}

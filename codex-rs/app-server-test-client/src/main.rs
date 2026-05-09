@@ -451,14 +451,16 @@ impl CodexClient {
         let request = ClientRequest::Initialize {
             request_id: request_id.clone(),
             params: InitializeParams {
-                client_info: ClientInfo {
+                client_info: Some(ClientInfo {
                     name: "codex-toy-app-server".to_string(),
                     title: Some("Codex Toy App Server".to_string()),
                     version: env!("CARGO_PKG_VERSION").to_string(),
-                },
-                capabilities: Some(InitializeCapabilities {
-                    experimental_api: true,
                 }),
+                client_capabilities: Some(InitializeCapabilities {
+                    experimental_api: true,
+                    terminal: false,
+                }),
+                ..Default::default()
             },
         };
 

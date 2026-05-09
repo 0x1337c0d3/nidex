@@ -11,6 +11,12 @@ use crate::error_code::INVALID_REQUEST_ERROR_CODE;
 use crate::outgoing_message::OutgoingMessageSender;
 use codex_app_server_protocol::AccountRateLimitsUpdatedNotification;
 use codex_app_server_protocol::AgentMessageDeltaNotification;
+use codex_app_server_protocol::AcpPermissionOption;
+use codex_app_server_protocol::AcpPermissionOptionKind;
+use codex_app_server_protocol::AcpPermissionOutcome;
+use codex_app_server_protocol::AcpRequestPermissionParams;
+use codex_app_server_protocol::AcpRequestPermissionResponse;
+use codex_app_server_protocol::AcpToolCall;
 use codex_app_server_protocol::ApplyPatchApprovalParams;
 use codex_app_server_protocol::ApplyPatchApprovalResponse;
 use codex_app_server_protocol::CodexErrorInfo as V2CodexErrorInfo;
@@ -202,6 +208,23 @@ pub(crate) async fn apply_bespoke_event_handling(
                     .await;
                 });
             }
+            ApiVersion::Acp => {
+                let params = AcpRequestPermissionParams {
+                    session_id: conversation_id.to_string(),
+                    tool_call: AcpToolCall {
+                        id: call_id.clone(),
+                        name: "apply_patch".to_string(),
+                        input: serde_json::json!({ "callId": call_id }),
+                    },
+                    options: acp_standard_permission_options(),
+                };
+                let rx = outgoing
+                    .send_request(ServerRequestPayload::SessionRequestPermission(params))
+                    .await;
+                tokio::spawn(async move {
+                    on_acp_patch_permission_response(event_turn_id, rx, conversation).await;
+                });
+            }
         },
         EventMsg::ExecApprovalRequest(ExecApprovalRequestEvent {
             call_id,
@@ -271,9 +294,31 @@ pub(crate) async fn apply_bespoke_event_handling(
                     .await;
                 });
             }
+            ApiVersion::Acp => {
+                let command_string = shlex_join(&command);
+                let cwd_str = cwd.to_string_lossy().to_string();
+                let params = AcpRequestPermissionParams {
+                    session_id: conversation_id.to_string(),
+                    tool_call: AcpToolCall {
+                        id: call_id.clone(),
+                        name: "exec".to_string(),
+                        input: serde_json::json!({
+                            "command": command_string,
+                            "cwd": cwd_str,
+                        }),
+                    },
+                    options: acp_standard_permission_options(),
+                };
+                let rx = outgoing
+                    .send_request(ServerRequestPayload::SessionRequestPermission(params))
+                    .await;
+                tokio::spawn(async move {
+                    on_acp_exec_permission_response(event_turn_id, rx, conversation).await;
+                });
+            }
         },
         EventMsg::RequestUserInput(request) => {
-            if matches!(api_version, ApiVersion::V2) {
+            if matches!(api_version, ApiVersion::V2 | ApiVersion::Acp) {
                 let questions = request
                     .questions
                     .into_iter()
@@ -326,7 +371,7 @@ pub(crate) async fn apply_bespoke_event_handling(
             }
         }
         EventMsg::DynamicToolCallRequest(request) => {
-            if matches!(api_version, ApiVersion::V2) {
+            if matches!(api_version, ApiVersion::V2 | ApiVersion::Acp) {
                 let call_id = request.call_id;
                 let params = DynamicToolCallParams {
                     thread_id: conversation_id.to_string(),
@@ -1037,7 +1082,7 @@ pub(crate) async fn apply_bespoke_event_handling(
                             };
                             outgoing.send_response(rid, response).await;
                         }
-                        ApiVersion::V2 => {
+                        ApiVersion::V2 | ApiVersion::Acp => {
                             let response = TurnInterruptResponse {};
                             outgoing.send_response(rid, response).await;
                         }
@@ -1156,7 +1201,7 @@ async fn handle_turn_diff(
     api_version: ApiVersion,
     outgoing: &OutgoingMessageSender,
 ) {
-    if let ApiVersion::V2 = api_version {
+    if matches!(api_version, ApiVersion::V2 | ApiVersion::Acp) {
         let notification = TurnDiffUpdatedNotification {
             thread_id: conversation_id.to_string(),
             turn_id: event_turn_id.to_string(),
@@ -1176,7 +1221,7 @@ async fn handle_turn_plan_update(
     outgoing: &OutgoingMessageSender,
 ) {
     // `update_plan` is a todo/checklist tool; it is not related to plan-mode updates
-    if let ApiVersion::V2 = api_version {
+    if matches!(api_version, ApiVersion::V2 | ApiVersion::Acp) {
         let notification = TurnPlanUpdatedNotification {
             thread_id: conversation_id.to_string(),
             turn_id: event_turn_id.to_string(),
@@ -1822,6 +1867,92 @@ async fn construct_mcp_tool_call_end_notification(
         thread_id,
         turn_id,
         item,
+    }
+}
+
+/// Standard set of permission options offered for every ACP approval request.
+fn acp_standard_permission_options() -> Vec<AcpPermissionOption> {
+    vec![
+        AcpPermissionOption {
+            label: "Allow".to_string(),
+            kind: AcpPermissionOptionKind::AllowOnce,
+        },
+        AcpPermissionOption {
+            label: "Allow for session".to_string(),
+            kind: AcpPermissionOptionKind::AllowAlways,
+        },
+        AcpPermissionOption {
+            label: "Deny".to_string(),
+            kind: AcpPermissionOptionKind::RejectOnce,
+        },
+        AcpPermissionOption {
+            label: "Abort turn".to_string(),
+            kind: AcpPermissionOptionKind::RejectAlways,
+        },
+    ]
+}
+
+async fn on_acp_patch_permission_response(
+    event_turn_id: String,
+    receiver: oneshot::Receiver<JsonValue>,
+    conversation: Arc<CodexThread>,
+) {
+    let decision = match receiver.await {
+        Ok(value) => match serde_json::from_value::<AcpRequestPermissionResponse>(value) {
+            Ok(resp) => {
+                let AcpPermissionOutcome::Option { kind } = resp.outcome;
+                kind.to_review_decision()
+            }
+            Err(err) => {
+                error!("failed to deserialize AcpRequestPermissionResponse: {err}");
+                ReviewDecision::Denied
+            }
+        },
+        Err(err) => {
+            error!("ACP patch permission request failed: {err:?}");
+            ReviewDecision::Denied
+        }
+    };
+    if let Err(err) = conversation
+        .submit(Op::PatchApproval {
+            id: event_turn_id,
+            decision,
+        })
+        .await
+    {
+        error!("failed to submit PatchApproval: {err}");
+    }
+}
+
+async fn on_acp_exec_permission_response(
+    event_turn_id: String,
+    receiver: oneshot::Receiver<JsonValue>,
+    conversation: Arc<CodexThread>,
+) {
+    let decision = match receiver.await {
+        Ok(value) => match serde_json::from_value::<AcpRequestPermissionResponse>(value) {
+            Ok(resp) => {
+                let AcpPermissionOutcome::Option { kind } = resp.outcome;
+                kind.to_review_decision()
+            }
+            Err(err) => {
+                error!("failed to deserialize AcpRequestPermissionResponse: {err}");
+                ReviewDecision::Denied
+            }
+        },
+        Err(err) => {
+            error!("ACP exec permission request failed: {err:?}");
+            ReviewDecision::Denied
+        }
+    };
+    if let Err(err) = conversation
+        .submit(Op::ExecApproval {
+            id: event_turn_id,
+            decision,
+        })
+        .await
+    {
+        error!("failed to submit ExecApproval: {err}");
     }
 }
 

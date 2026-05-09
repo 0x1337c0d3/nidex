@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "SessionPromptContent": {
+      "description": "A single content block inside a Zed ACP `session/prompt` message.",
+      "oneOf": [
+        {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "text"
+              ],
+              "title": "TextSessionPromptContentType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text",
+            "type"
+          ],
+          "title": "TextSessionPromptContent",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "resource": {
+              "$ref": "#/definitions/SessionPromptResource"
+            },
+            "type": {
+              "enum": [
+                "resource"
+              ],
+              "title": "ResourceSessionPromptContentType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "resource",
+            "type"
+          ],
+          "title": "ResourceSessionPromptContent",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "unknown"
+              ],
+              "title": "UnknownSessionPromptContentType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "UnknownSessionPromptContent",
+          "type": "object"
+        }
+      ]
+    },
+    "SessionPromptResource": {
+      "description": "An embedded resource content block in a Zed ACP prompt.",
+      "properties": {
+        "mimeType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "uri": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "uri"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "Params for the Zed ACP `session/prompt` method.",
+  "properties": {
+    "prompt": {
+      "default": [],
+      "description": "Content blocks — ACP sends an array of typed blocks.",
+      "items": {
+        "$ref": "#/definitions/SessionPromptContent"
+      },
+      "type": "array"
+    },
+    "sessionId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "sessionId"
+  ],
+  "title": "SessionPromptParams",
+  "type": "object"
+}

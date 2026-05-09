@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Params for ACP `terminal/kill` (server→client): sends SIGKILL to the terminal process.",
+  "properties": {
+    "terminalId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "terminalId"
+  ],
+  "title": "AcpTerminalKillParams",
+  "type": "object"
+}

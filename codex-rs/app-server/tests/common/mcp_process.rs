@@ -166,6 +166,7 @@ impl McpProcess {
             client_info,
             Some(InitializeCapabilities {
                 experimental_api: true,
+                terminal: false,
             }),
         )
         .await
@@ -177,8 +178,9 @@ impl McpProcess {
         capabilities: Option<InitializeCapabilities>,
     ) -> anyhow::Result<JSONRPCMessage> {
         self.initialize_with_params(InitializeParams {
-            client_info,
-            capabilities,
+            protocol_version: Some("2025-05-12".to_string()),
+            client_info: Some(client_info),
+            client_capabilities: capabilities,
         })
         .await
     }

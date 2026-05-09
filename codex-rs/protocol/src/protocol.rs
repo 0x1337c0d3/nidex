@@ -582,8 +582,8 @@ impl SandboxPolicy {
                         }
                         #[allow(clippy::expect_used)]
                         let top_level_codex = writable_root
-                            .join(".codex")
-                            .expect(".codex is a valid relative path");
+                            .join(".nidex")
+                            .expect(".nidex is a valid relative path");
                         if top_level_codex.as_path().is_dir() {
                             subpaths.push(top_level_codex);
                         }

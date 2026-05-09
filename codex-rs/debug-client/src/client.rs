@@ -95,14 +95,16 @@ impl AppServerClient {
         let request = ClientRequest::Initialize {
             request_id: request_id.clone(),
             params: codex_app_server_protocol::InitializeParams {
-                client_info: ClientInfo {
+                client_info: Some(ClientInfo {
                     name: "debug-client".to_string(),
                     title: Some("Debug Client".to_string()),
                     version: env!("CARGO_PKG_VERSION").to_string(),
-                },
-                capabilities: Some(InitializeCapabilities {
-                    experimental_api: true,
                 }),
+                client_capabilities: Some(InitializeCapabilities {
+                    experimental_api: true,
+                    terminal: false,
+                }),
+                ..Default::default()
             },
         };
 

@@ -5,6 +5,38 @@
       "description": "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
       "type": "string"
     },
+    "AcpAuthenticateParams": {
+      "description": "Params for ACP `authenticate`.",
+      "properties": {
+        "credentials": {
+          "default": null
+        },
+        "method": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "method"
+      ],
+      "type": "object"
+    },
+    "AcpSessionNewParams": {
+      "description": "Params for the ACP `session/new` method. ACP only requires `cwd` and `mcpServers`; all codex-specific fields are supplied by server defaults or ignored until later gaps are addressed.",
+      "properties": {
+        "cwd": {
+          "type": "string"
+        },
+        "mcpServers": {
+          "default": [],
+          "items": true,
+          "type": "array"
+        }
+      },
+      "required": [
+        "cwd"
+      ],
+      "type": "object"
+    },
     "AddConversationListenerParams": {
       "properties": {
         "conversationId": {
@@ -616,13 +648,18 @@
           "default": false,
           "description": "Opt into receiving experimental API methods and fields.",
           "type": "boolean"
+        },
+        "terminal": {
+          "default": false,
+          "description": "Client supports delegated terminal execution (`terminal/*` server→client requests).",
+          "type": "boolean"
         }
       },
       "type": "object"
     },
     "InitializeParams": {
       "properties": {
-        "capabilities": {
+        "clientCapabilities": {
           "anyOf": [
             {
               "$ref": "#/definitions/InitializeCapabilities"
@@ -633,12 +670,23 @@
           ]
         },
         "clientInfo": {
-          "$ref": "#/definitions/ClientInfo"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ClientInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "protocolVersion": {
+          "description": "ACP protocol version the client wishes to use (e.g. `\"2025-05-12\"`).",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "required": [
-        "clientInfo"
-      ],
       "type": "object"
     },
     "InputItem": {
@@ -1184,7 +1232,8 @@
           "format": "int64",
           "type": "integer"
         }
-      ]
+      ],
+      "description": "A JSON-RPC request identifier — either a string or an integer.\n\n`#[serde(untagged)]` is intentionally NOT used here. Untagged enum deserialization inside serde's internally-tagged `ClientRequest` enum (which uses `#[serde(tag = \"method\")]`) triggers a known serde limitation: the error from the first failed variant attempt (\"invalid type: integer, expected a string\") leaks out instead of being silently retried. A manual `Visitor` with `deserialize_any` avoids this."
     },
     "ResponseItem": {
       "oneOf": [
@@ -2003,6 +2052,185 @@
         "model",
         "sandboxPolicy",
         "summary"
+      ],
+      "type": "object"
+    },
+    "SessionCloseParams": {
+      "description": "Params for ACP `session/close`.",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "SessionListParams": {
+      "description": "Params for ACP `session/list`.",
+      "type": "object"
+    },
+    "SessionLoadParams": {
+      "description": "Params for ACP `session/load` (resume with history replay).",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "SessionPromptContent": {
+      "description": "A single content block inside a Zed ACP `session/prompt` message.",
+      "oneOf": [
+        {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "text"
+              ],
+              "title": "TextSessionPromptContentType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text",
+            "type"
+          ],
+          "title": "TextSessionPromptContent",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "resource": {
+              "$ref": "#/definitions/SessionPromptResource"
+            },
+            "type": {
+              "enum": [
+                "resource"
+              ],
+              "title": "ResourceSessionPromptContentType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "resource",
+            "type"
+          ],
+          "title": "ResourceSessionPromptContent",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "unknown"
+              ],
+              "title": "UnknownSessionPromptContentType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "UnknownSessionPromptContent",
+          "type": "object"
+        }
+      ]
+    },
+    "SessionPromptParams": {
+      "description": "Params for the Zed ACP `session/prompt` method.",
+      "properties": {
+        "prompt": {
+          "default": [],
+          "description": "Content blocks — ACP sends an array of typed blocks.",
+          "items": {
+            "$ref": "#/definitions/SessionPromptContent"
+          },
+          "type": "array"
+        },
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "SessionPromptResource": {
+      "description": "An embedded resource content block in a Zed ACP prompt.",
+      "properties": {
+        "mimeType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "uri": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "uri"
+      ],
+      "type": "object"
+    },
+    "SessionResumeParams": {
+      "description": "Params for ACP `session/resume` (resume without history replay).",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "SessionSetConfigOptionParams": {
+      "description": "Params for ACP `session/setConfigOption`.",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "value": true
+      },
+      "required": [
+        "key",
+        "sessionId",
+        "value"
+      ],
+      "type": "object"
+    },
+    "SessionSetModeParams": {
+      "description": "Params for ACP `session/setMode`.",
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "sessionId"
       ],
       "type": "object"
     },
@@ -2942,6 +3170,231 @@
         "params"
       ],
       "title": "Thread/startRequest",
+      "type": "object"
+    },
+    {
+      "description": "ACP session/new: standard ACP session creation (cwd + mcpServers).",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "session/new"
+          ],
+          "title": "Session/newRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AcpSessionNewParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Session/newRequest",
+      "type": "object"
+    },
+    {
+      "description": "Zed ACP: send a prompt to an existing session.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "session/prompt"
+          ],
+          "title": "Session/promptRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionPromptParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Session/promptRequest",
+      "type": "object"
+    },
+    {
+      "description": "ACP Gap 5: close a session (terminate the running turn and clean up).",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "session/close"
+          ],
+          "title": "Session/closeRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionCloseParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Session/closeRequest",
+      "type": "object"
+    },
+    {
+      "description": "ACP Gap 5: list active sessions.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "session/list"
+          ],
+          "title": "Session/listRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionListParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Session/listRequest",
+      "type": "object"
+    },
+    {
+      "description": "ACP Gap 5: resume a session with history replay.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "session/load"
+          ],
+          "title": "Session/loadRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionLoadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Session/loadRequest",
+      "type": "object"
+    },
+    {
+      "description": "ACP Gap 5: resume a session without history replay.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "session/resume"
+          ],
+          "title": "Session/resumeRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionResumeParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Session/resumeRequest",
+      "type": "object"
+    },
+    {
+      "description": "ACP Gap 5: set a runtime config option on a session (stub).",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "session/setConfigOption"
+          ],
+          "title": "Session/setConfigOptionRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionSetConfigOptionParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Session/setConfigOptionRequest",
+      "type": "object"
+    },
+    {
+      "description": "ACP Gap 5: switch the agent mode for a session (stub).",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "session/setMode"
+          ],
+          "title": "Session/setModeRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/SessionSetModeParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Session/setModeRequest",
+      "type": "object"
+    },
+    {
+      "description": "ACP Gap 5: pre-session auth handshake.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "authenticate"
+          ],
+          "title": "AuthenticateRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/AcpAuthenticateParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "AuthenticateRequest",
       "type": "object"
     },
     {

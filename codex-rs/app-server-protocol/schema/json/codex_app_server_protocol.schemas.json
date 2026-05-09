@@ -5,6 +5,256 @@
       "description": "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
       "type": "string"
     },
+    "AcpAuthenticateParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for ACP `authenticate`.",
+      "properties": {
+        "credentials": {
+          "default": null
+        },
+        "method": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "method"
+      ],
+      "title": "AcpAuthenticateParams",
+      "type": "object"
+    },
+    "AcpAuthenticateResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for ACP `authenticate`.",
+      "properties": {
+        "authenticated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "authenticated"
+      ],
+      "title": "AcpAuthenticateResponse",
+      "type": "object"
+    },
+    "AcpContentBlock": {
+      "description": "A single ACP content block inside a `session/update` agentMessage update.",
+      "oneOf": [
+        {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "text"
+              ],
+              "title": "TextAcpContentBlockType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text",
+            "type"
+          ],
+          "title": "TextAcpContentBlock",
+          "type": "object"
+        }
+      ]
+    },
+    "AcpPermissionOption": {
+      "description": "A single permission option presented to the client.",
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/AcpPermissionOptionKind"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "label"
+      ],
+      "type": "object"
+    },
+    "AcpPermissionOptionKind": {
+      "description": "Outcome kinds offered in `session/request_permission`.",
+      "enum": [
+        "allow_once",
+        "allow_always",
+        "reject_once",
+        "reject_always"
+      ],
+      "type": "string"
+    },
+    "AcpPermissionOutcome": {
+      "description": "Outcome chosen by the client in response to a `session/request_permission`.",
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "$ref": "#/definitions/AcpPermissionOptionKind"
+            },
+            "type": {
+              "enum": [
+                "option"
+              ],
+              "title": "OptionAcpPermissionOutcomeType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "type"
+          ],
+          "title": "OptionAcpPermissionOutcome",
+          "type": "object"
+        }
+      ]
+    },
+    "AcpRequestPermissionParams": {
+      "description": "Params for the ACP `session/request_permission` server→client request.",
+      "properties": {
+        "options": {
+          "items": {
+            "$ref": "#/definitions/AcpPermissionOption"
+          },
+          "type": "array"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "toolCall": {
+          "$ref": "#/definitions/AcpToolCall"
+        }
+      },
+      "required": [
+        "options",
+        "sessionId",
+        "toolCall"
+      ],
+      "type": "object"
+    },
+    "AcpSessionInfo": {
+      "description": "Summary of a single session returned by `session/list`.",
+      "properties": {
+        "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "AcpSessionNewParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for the ACP `session/new` method. ACP only requires `cwd` and `mcpServers`; all codex-specific fields are supplied by server defaults or ignored until later gaps are addressed.",
+      "properties": {
+        "cwd": {
+          "type": "string"
+        },
+        "mcpServers": {
+          "default": [],
+          "items": true,
+          "type": "array"
+        }
+      },
+      "required": [
+        "cwd"
+      ],
+      "title": "AcpSessionNewParams",
+      "type": "object"
+    },
+    "AcpTerminalCreateParams": {
+      "description": "Params for ACP `terminal/create` (server→client): asks the client to open a new terminal process and return a handle.",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "AcpTerminalKillParams": {
+      "description": "Params for ACP `terminal/kill` (server→client): sends SIGKILL to the terminal process.",
+      "properties": {
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "terminalId"
+      ],
+      "type": "object"
+    },
+    "AcpTerminalOutputParams": {
+      "description": "Params for ACP `terminal/output` (server→client): writes data to the terminal's stdin.",
+      "properties": {
+        "data": {
+          "description": "Base64-encoded bytes to write to the terminal's stdin.",
+          "type": "string"
+        },
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "data",
+        "terminalId"
+      ],
+      "type": "object"
+    },
+    "AcpTerminalReleaseParams": {
+      "description": "Params for ACP `terminal/release` (server→client): releases the terminal handle without killing the process.",
+      "properties": {
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "terminalId"
+      ],
+      "type": "object"
+    },
+    "AcpTerminalWaitForExitParams": {
+      "description": "Params for ACP `terminal/waitForExit` (server→client): blocks until the process exits and returns the exit code.",
+      "properties": {
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "terminalId"
+      ],
+      "type": "object"
+    },
+    "AcpToolCall": {
+      "description": "A tool call reference inside `session/request_permission`.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "input": true,
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "input",
+        "name"
+      ],
+      "type": "object"
+    },
     "AddConversationListenerParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
@@ -33,6 +283,75 @@
         "subscriptionId"
       ],
       "title": "AddConversationSubscriptionResponse",
+      "type": "object"
+    },
+    "AgentCapabilities": {
+      "properties": {
+        "authenticate": {
+          "default": false,
+          "description": "Server supports `authenticate`.",
+          "type": "boolean"
+        },
+        "closeSession": {
+          "default": false,
+          "description": "Server supports `session/close`.",
+          "type": "boolean"
+        },
+        "listSessions": {
+          "default": false,
+          "description": "Server supports `session/list`.",
+          "type": "boolean"
+        },
+        "loadSession": {
+          "default": false,
+          "description": "Server supports `session/load` (resume with history replay).",
+          "type": "boolean"
+        },
+        "mcpCapabilities": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/McpCapabilities"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "promptCapabilities": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PromptCapabilities"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resumeSession": {
+          "default": false,
+          "description": "Server supports `session/resume` (resume without history replay).",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "AgentInfo": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "title",
+        "version"
+      ],
       "type": "object"
     },
     "AgentMessageContent": {
@@ -341,6 +660,27 @@
           ],
           "title": "InitializedNotification",
           "type": "object"
+        },
+        {
+          "description": "Zed ACP: client requests cancellation of the current turn.",
+          "properties": {
+            "method": {
+              "enum": [
+                "session/cancel"
+              ],
+              "title": "Session/cancelNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionCancelParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "Session/cancelNotification",
+          "type": "object"
         }
       ],
       "title": "ClientNotification"
@@ -396,6 +736,231 @@
             "params"
           ],
           "title": "Thread/startRequest",
+          "type": "object"
+        },
+        {
+          "description": "ACP session/new: standard ACP session creation (cwd + mcpServers).",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "session/new"
+              ],
+              "title": "Session/newRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AcpSessionNewParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Session/newRequest",
+          "type": "object"
+        },
+        {
+          "description": "Zed ACP: send a prompt to an existing session.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "session/prompt"
+              ],
+              "title": "Session/promptRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionPromptParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Session/promptRequest",
+          "type": "object"
+        },
+        {
+          "description": "ACP Gap 5: close a session (terminate the running turn and clean up).",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "session/close"
+              ],
+              "title": "Session/closeRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionCloseParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Session/closeRequest",
+          "type": "object"
+        },
+        {
+          "description": "ACP Gap 5: list active sessions.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "session/list"
+              ],
+              "title": "Session/listRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionListParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Session/listRequest",
+          "type": "object"
+        },
+        {
+          "description": "ACP Gap 5: resume a session with history replay.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "session/load"
+              ],
+              "title": "Session/loadRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionLoadParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Session/loadRequest",
+          "type": "object"
+        },
+        {
+          "description": "ACP Gap 5: resume a session without history replay.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "session/resume"
+              ],
+              "title": "Session/resumeRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionResumeParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Session/resumeRequest",
+          "type": "object"
+        },
+        {
+          "description": "ACP Gap 5: set a runtime config option on a session (stub).",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "session/setConfigOption"
+              ],
+              "title": "Session/setConfigOptionRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionSetConfigOptionParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Session/setConfigOptionRequest",
+          "type": "object"
+        },
+        {
+          "description": "ACP Gap 5: switch the agent mode for a session (stub).",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "session/setMode"
+              ],
+              "title": "Session/setModeRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionSetModeParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Session/setModeRequest",
+          "type": "object"
+        },
+        {
+          "description": "ACP Gap 5: pre-session auth handshake.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "authenticate"
+              ],
+              "title": "AuthenticateRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AcpAuthenticateParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "AuthenticateRequest",
           "type": "object"
         },
         {
@@ -5079,6 +5644,11 @@
           "default": false,
           "description": "Opt into receiving experimental API methods and fields.",
           "type": "boolean"
+        },
+        "terminal": {
+          "default": false,
+          "description": "Client supports delegated terminal execution (`terminal/*` server→client requests).",
+          "type": "boolean"
         }
       },
       "type": "object"
@@ -5086,7 +5656,7 @@
     "InitializeParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
-        "capabilities": {
+        "clientCapabilities": {
           "anyOf": [
             {
               "$ref": "#/definitions/InitializeCapabilities"
@@ -5097,23 +5667,67 @@
           ]
         },
         "clientInfo": {
-          "$ref": "#/definitions/ClientInfo"
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ClientInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "protocolVersion": {
+          "description": "ACP protocol version the client wishes to use (e.g. `\"2025-05-12\"`).",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "required": [
-        "clientInfo"
-      ],
       "title": "InitializeParams",
       "type": "object"
     },
     "InitializeResponse": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
+        "agentCapabilities": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AgentCapabilities"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "agentInfo": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AgentInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authMethods": {
+          "description": "Auth methods supported by the server (empty = no auth required).",
+          "items": true,
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "protocolVersion": {
+          "description": "ACP protocol version negotiated with the client (e.g. `\"2025-05-12\"`).",
+          "type": "string"
+        },
         "userAgent": {
           "type": "string"
         }
       },
       "required": [
+        "protocolVersion",
         "userAgent"
       ],
       "title": "InitializeResponse",
@@ -5489,6 +6103,19 @@
         "o_auth"
       ],
       "type": "string"
+    },
+    "McpCapabilities": {
+      "properties": {
+        "http": {
+          "default": false,
+          "type": "boolean"
+        },
+        "sse": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
     },
     "McpInvocation": {
       "properties": {
@@ -5929,6 +6556,23 @@
               "type": "null"
             }
           ]
+        }
+      },
+      "type": "object"
+    },
+    "PromptCapabilities": {
+      "properties": {
+        "audio": {
+          "default": false,
+          "type": "boolean"
+        },
+        "embeddedContext": {
+          "default": false,
+          "type": "boolean"
+        },
+        "image": {
+          "default": false,
+          "type": "boolean"
         }
       },
       "type": "object"
@@ -7782,6 +8426,27 @@
           "type": "object"
         },
         {
+          "description": "ACP `session/update`: typed real-time progress notification (server→client).",
+          "properties": {
+            "method": {
+              "enum": [
+                "session/update"
+              ],
+              "title": "Session/updateNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/SessionUpdateNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "Session/updateNotification",
+          "type": "object"
+        },
+        {
           "description": "DEPRECATED NOTIFICATIONS below",
           "properties": {
             "method": {
@@ -7930,6 +8595,156 @@
           "type": "object"
         },
         {
+          "description": "ACP: server requests permission from the client for a tool call.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "session/request_permission"
+              ],
+              "title": "Session/requestPermissionRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AcpRequestPermissionParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Session/requestPermissionRequest",
+          "type": "object"
+        },
+        {
+          "description": "ACP Gap 6: terminal delegation — ask client to create a terminal process.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "terminal/create"
+              ],
+              "title": "Terminal/createRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AcpTerminalCreateParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Terminal/createRequest",
+          "type": "object"
+        },
+        {
+          "description": "ACP Gap 6: write data to a client-side terminal's stdin.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "terminal/output"
+              ],
+              "title": "Terminal/outputRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AcpTerminalOutputParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Terminal/outputRequest",
+          "type": "object"
+        },
+        {
+          "description": "ACP Gap 6: send SIGKILL to a client-side terminal process.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "terminal/kill"
+              ],
+              "title": "Terminal/killRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AcpTerminalKillParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Terminal/killRequest",
+          "type": "object"
+        },
+        {
+          "description": "ACP Gap 6: wait for a client-side terminal process to exit.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "terminal/waitForExit"
+              ],
+              "title": "Terminal/waitForExitRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AcpTerminalWaitForExitParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Terminal/waitForExitRequest",
+          "type": "object"
+        },
+        {
+          "description": "ACP Gap 6: release a client-side terminal handle without killing the process.",
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "terminal/release"
+              ],
+              "title": "Terminal/releaseRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/AcpTerminalReleaseParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Terminal/releaseRequest",
+          "type": "object"
+        },
+        {
           "description": "DEPRECATED APIs below Request to approve a patch. This request is used for Turns started via the legacy APIs (i.e. SendUserTurn, SendUserMessage).",
           "properties": {
             "id": {
@@ -7981,6 +8796,40 @@
         }
       ],
       "title": "ServerRequest"
+    },
+    "SessionCancelParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for the Zed ACP `session/cancel` notification (client → server).",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "title": "SessionCancelParams",
+      "type": "object"
+    },
+    "SessionCloseParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for ACP `session/close`.",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "title": "SessionCloseParams",
+      "type": "object"
+    },
+    "SessionCloseResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for ACP `session/close`.",
+      "title": "SessionCloseResponse",
+      "type": "object"
     },
     "SessionConfiguredNotification": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -8034,6 +8883,309 @@
       "title": "SessionConfiguredNotification",
       "type": "object"
     },
+    "SessionListParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for ACP `session/list`.",
+      "title": "SessionListParams",
+      "type": "object"
+    },
+    "SessionListResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for ACP `session/list`.",
+      "properties": {
+        "sessions": {
+          "items": {
+            "$ref": "#/definitions/AcpSessionInfo"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "sessions"
+      ],
+      "title": "SessionListResponse",
+      "type": "object"
+    },
+    "SessionLoadParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for ACP `session/load` (resume with history replay).",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "title": "SessionLoadParams",
+      "type": "object"
+    },
+    "SessionLoadResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for ACP `session/load`.",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "title": "SessionLoadResponse",
+      "type": "object"
+    },
+    "SessionNewResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for the ACP `session/new` method.",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "title": "SessionNewResponse",
+      "type": "object"
+    },
+    "SessionPromptContent": {
+      "description": "A single content block inside a Zed ACP `session/prompt` message.",
+      "oneOf": [
+        {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "text"
+              ],
+              "title": "TextSessionPromptContentType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text",
+            "type"
+          ],
+          "title": "TextSessionPromptContent",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "resource": {
+              "$ref": "#/definitions/SessionPromptResource"
+            },
+            "type": {
+              "enum": [
+                "resource"
+              ],
+              "title": "ResourceSessionPromptContentType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "resource",
+            "type"
+          ],
+          "title": "ResourceSessionPromptContent",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": [
+                "unknown"
+              ],
+              "title": "UnknownSessionPromptContentType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "title": "UnknownSessionPromptContent",
+          "type": "object"
+        }
+      ]
+    },
+    "SessionPromptParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for the Zed ACP `session/prompt` method.",
+      "properties": {
+        "prompt": {
+          "default": [],
+          "description": "Content blocks — ACP sends an array of typed blocks.",
+          "items": {
+            "$ref": "#/definitions/SessionPromptContent"
+          },
+          "type": "array"
+        },
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "title": "SessionPromptParams",
+      "type": "object"
+    },
+    "SessionPromptResource": {
+      "description": "An embedded resource content block in a Zed ACP prompt.",
+      "properties": {
+        "mimeType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "uri": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "uri"
+      ],
+      "type": "object"
+    },
+    "SessionPromptResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for the Zed ACP `session/prompt` method. Sent only after the full turn completes (long-polling style).",
+      "properties": {
+        "stopReason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "stopReason"
+      ],
+      "title": "SessionPromptResponse",
+      "type": "object"
+    },
+    "SessionRequestPermissionParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for the ACP `session/request_permission` server→client request.",
+      "properties": {
+        "options": {
+          "items": {
+            "$ref": "#/definitions/AcpPermissionOption"
+          },
+          "type": "array"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "toolCall": {
+          "$ref": "#/definitions/AcpToolCall"
+        }
+      },
+      "required": [
+        "options",
+        "sessionId",
+        "toolCall"
+      ],
+      "title": "AcpRequestPermissionParams",
+      "type": "object"
+    },
+    "SessionRequestPermissionResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for the ACP `session/request_permission` server→client request.",
+      "properties": {
+        "outcome": {
+          "$ref": "#/definitions/AcpPermissionOutcome"
+        }
+      },
+      "required": [
+        "outcome"
+      ],
+      "title": "AcpRequestPermissionResponse",
+      "type": "object"
+    },
+    "SessionResumeParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for ACP `session/resume` (resume without history replay).",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "title": "SessionResumeParams",
+      "type": "object"
+    },
+    "SessionResumeResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for ACP `session/resume`.",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "title": "SessionResumeResponse",
+      "type": "object"
+    },
+    "SessionSetConfigOptionParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for ACP `session/setConfigOption`.",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "value": true
+      },
+      "required": [
+        "key",
+        "sessionId",
+        "value"
+      ],
+      "title": "SessionSetConfigOptionParams",
+      "type": "object"
+    },
+    "SessionSetConfigOptionResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for ACP `session/setConfigOption`.",
+      "title": "SessionSetConfigOptionResponse",
+      "type": "object"
+    },
+    "SessionSetModeParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for ACP `session/setMode`.",
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "sessionId"
+      ],
+      "title": "SessionSetModeParams",
+      "type": "object"
+    },
+    "SessionSetModeResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for ACP `session/setMode`.",
+      "title": "SessionSetModeResponse",
+      "type": "object"
+    },
     "SessionSource": {
       "oneOf": [
         {
@@ -8057,6 +9209,78 @@
             "subagent"
           ],
           "title": "SubagentSessionSource",
+          "type": "object"
+        }
+      ]
+    },
+    "SessionUpdateNotification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for the ACP `session/update` server→client notification.",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "update": {
+          "$ref": "#/definitions/SessionUpdatePayload"
+        }
+      },
+      "required": [
+        "sessionId",
+        "update"
+      ],
+      "title": "SessionUpdateNotification",
+      "type": "object"
+    },
+    "SessionUpdatePayload": {
+      "description": "Tagged payload for the ACP `session/update` server→client notification.",
+      "oneOf": [
+        {
+          "description": "Streaming assistant text delta.",
+          "properties": {
+            "content": {
+              "items": {
+                "$ref": "#/definitions/AcpContentBlock"
+              },
+              "type": "array"
+            },
+            "role": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "agentMessage"
+              ],
+              "title": "AgentMessageSessionUpdatePayloadType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content",
+            "role",
+            "type"
+          ],
+          "title": "AgentMessageSessionUpdatePayload",
+          "type": "object"
+        },
+        {
+          "description": "Turn ended with an error.",
+          "properties": {
+            "error": {
+              "type": "string"
+            },
+            "type": {
+              "enum": [
+                "error"
+              ],
+              "title": "ErrorSessionUpdatePayloadType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "error",
+            "type"
+          ],
+          "title": "ErrorSessionUpdatePayload",
           "type": "object"
         }
       ]
@@ -8343,6 +9567,128 @@
           "type": "object"
         }
       ]
+    },
+    "TerminalCreateParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for ACP `terminal/create` (server→client): asks the client to open a new terminal process and return a handle.",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "title": "AcpTerminalCreateParams",
+      "type": "object"
+    },
+    "TerminalCreateResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for ACP `terminal/create`.",
+      "properties": {
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "terminalId"
+      ],
+      "title": "AcpTerminalCreateResponse",
+      "type": "object"
+    },
+    "TerminalKillParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for ACP `terminal/kill` (server→client): sends SIGKILL to the terminal process.",
+      "properties": {
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "terminalId"
+      ],
+      "title": "AcpTerminalKillParams",
+      "type": "object"
+    },
+    "TerminalKillResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for ACP `terminal/kill`.",
+      "title": "AcpTerminalKillResponse",
+      "type": "object"
+    },
+    "TerminalOutputParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for ACP `terminal/output` (server→client): writes data to the terminal's stdin.",
+      "properties": {
+        "data": {
+          "description": "Base64-encoded bytes to write to the terminal's stdin.",
+          "type": "string"
+        },
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "data",
+        "terminalId"
+      ],
+      "title": "AcpTerminalOutputParams",
+      "type": "object"
+    },
+    "TerminalOutputResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for ACP `terminal/output`.",
+      "title": "AcpTerminalOutputResponse",
+      "type": "object"
+    },
+    "TerminalReleaseParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for ACP `terminal/release` (server→client): releases the terminal handle without killing the process.",
+      "properties": {
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "terminalId"
+      ],
+      "title": "AcpTerminalReleaseParams",
+      "type": "object"
+    },
+    "TerminalReleaseResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for ACP `terminal/release`.",
+      "title": "AcpTerminalReleaseResponse",
+      "type": "object"
+    },
+    "TerminalWaitForExitParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Params for ACP `terminal/waitForExit` (server→client): blocks until the process exits and returns the exit code.",
+      "properties": {
+        "terminalId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "terminalId"
+      ],
+      "title": "AcpTerminalWaitForExitParams",
+      "type": "object"
+    },
+    "TerminalWaitForExitResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "Response for ACP `terminal/waitForExit`.",
+      "properties": {
+        "exitCode": {
+          "format": "int32",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "exitCode"
+      ],
+      "title": "AcpTerminalWaitForExitResponse",
+      "type": "object"
     },
     "TextElement": {
       "properties": {

@@ -1,11 +1,145 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "AgentCapabilities": {
+      "properties": {
+        "authenticate": {
+          "default": false,
+          "description": "Server supports `authenticate`.",
+          "type": "boolean"
+        },
+        "closeSession": {
+          "default": false,
+          "description": "Server supports `session/close`.",
+          "type": "boolean"
+        },
+        "listSessions": {
+          "default": false,
+          "description": "Server supports `session/list`.",
+          "type": "boolean"
+        },
+        "loadSession": {
+          "default": false,
+          "description": "Server supports `session/load` (resume with history replay).",
+          "type": "boolean"
+        },
+        "mcpCapabilities": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/McpCapabilities"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "promptCapabilities": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PromptCapabilities"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resumeSession": {
+          "default": false,
+          "description": "Server supports `session/resume` (resume without history replay).",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "AgentInfo": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "title",
+        "version"
+      ],
+      "type": "object"
+    },
+    "McpCapabilities": {
+      "properties": {
+        "http": {
+          "default": false,
+          "type": "boolean"
+        },
+        "sse": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "PromptCapabilities": {
+      "properties": {
+        "audio": {
+          "default": false,
+          "type": "boolean"
+        },
+        "embeddedContext": {
+          "default": false,
+          "type": "boolean"
+        },
+        "image": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    }
+  },
   "properties": {
+    "agentCapabilities": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/AgentCapabilities"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "agentInfo": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/AgentInfo"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "authMethods": {
+      "description": "Auth methods supported by the server (empty = no auth required).",
+      "items": true,
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "protocolVersion": {
+      "description": "ACP protocol version negotiated with the client (e.g. `\"2025-05-12\"`).",
+      "type": "string"
+    },
     "userAgent": {
       "type": "string"
     }
   },
   "required": [
+    "protocolVersion",
     "userAgent"
   ],
   "title": "InitializeResponse",
