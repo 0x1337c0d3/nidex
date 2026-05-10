@@ -71,6 +71,9 @@ async fn run_request(input: Vec<ResponseItem>) -> Value {
     config.model_provider_id = provider.name.clone();
     config.model_provider = provider.clone();
     config.show_raw_agent_reasoning = true;
+    // Use a non-DeepSeek model slug so the builder uses the generic "reasoning"
+    // field rather than "reasoning_content".
+    config.model = Some("gpt-4o".to_string());
     let effort = config.model_reasoning_effort;
     let summary = config.model_reasoning_summary;
     let config = Arc::new(config);

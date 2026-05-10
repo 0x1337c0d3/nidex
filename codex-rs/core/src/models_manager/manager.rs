@@ -142,14 +142,17 @@ impl ModelsManager {
             .into_iter()
             .find(|m| m.slug == model);
         let model = if let Some(remote) = remote {
-            if remote.base_instructions.is_empty() {
-                let local = model_info::find_model_info_for_slug(&remote.slug);
-                ModelInfo {
-                    base_instructions: local.base_instructions,
-                    ..remote
-                }
-            } else {
-                remote
+            let local = model_info::find_model_info_for_slug(&remote.slug);
+            ModelInfo {
+                base_instructions: if remote.base_instructions.is_empty() {
+                    local.base_instructions
+                } else {
+                    remote.base_instructions
+                },
+                // Fall back to local default when the server omits context_window,
+                // so token usage percentage is always computable.
+                context_window: remote.context_window.or(local.context_window),
+                ..remote
             }
         } else {
             model_info::find_model_info_for_slug(model)

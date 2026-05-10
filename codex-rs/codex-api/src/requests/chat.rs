@@ -85,6 +85,19 @@ impl<'a> ChatRequestBuilder<'a> {
         let mut messages = Vec::<Value>::new();
         messages.push(json!({"role": "system", "content": self.instructions}));
 
+        // Determine the reasoning field name once for the whole request.
+        // Check the model slug in addition to the provider name so that
+        // DeepSeek models accessed through non-DeepSeek providers (e.g. Ollama,
+        // NVIDIA NIM) are still handled correctly.
+        let reasoning_field = self.reasoning_field_name.unwrap_or_else(|| {
+            let slug = self.model_slug.unwrap_or(self.model);
+            if is_deepseek_variant(&provider.name) || is_deepseek_variant(slug) {
+                "reasoning_content"
+            } else {
+                "reasoning"
+            }
+        });
+
         let input = self.input;
         let mut reasoning_by_anchor_index: HashMap<usize, String> = HashMap::new();
 
@@ -196,12 +209,11 @@ impl<'a> ChatRequestBuilder<'a> {
                     let mut msg = json!({"role": effective_role, "content": content_value});
                     if role == "assistant" {
                         if let Some(obj) = msg.as_object_mut() {
-                            let field_name = self.reasoning_field_name.unwrap_or_else(|| reasoning_field_name(&provider.name));
                             let reasoning_text = reasoning_by_anchor_index.get(&idx).map(String::as_str).unwrap_or("");
                             // Some providers (e.g. DeepSeek) require the field on every assistant
                             // message even when empty — omitting it causes an API error.
-                            if !reasoning_text.is_empty() || field_name == "reasoning_content" {
-                                obj.insert(field_name.to_string(), json!(reasoning_text));
+                            if !reasoning_text.is_empty() || reasoning_field == "reasoning_content" {
+                                obj.insert(reasoning_field.to_string(), json!(reasoning_text));
                             }
                         }
                     }
@@ -222,8 +234,7 @@ impl<'a> ChatRequestBuilder<'a> {
                             "arguments": arguments,
                         }
                     });
-                    let field_name = self.reasoning_field_name.unwrap_or_else(|| reasoning_field_name(&provider.name));
-                    push_tool_call_message(&mut messages, tool_call, reasoning, field_name);
+                    push_tool_call_message(&mut messages, tool_call, reasoning, reasoning_field);
                 }
                 ResponseItem::LocalShellCall {
                     id,
@@ -238,8 +249,7 @@ impl<'a> ChatRequestBuilder<'a> {
                         "status": status,
                         "action": action,
                     });
-                    let field_name = self.reasoning_field_name.unwrap_or_else(|| reasoning_field_name(&provider.name));
-                    push_tool_call_message(&mut messages, tool_call, reasoning, field_name);
+                    push_tool_call_message(&mut messages, tool_call, reasoning, reasoning_field);
                 }
                 ResponseItem::FunctionCallOutput { call_id, output } => {
                     let content_value = if let Some(items) = &output.content_items {
@@ -281,8 +291,7 @@ impl<'a> ChatRequestBuilder<'a> {
                         }
                     });
                     let reasoning = reasoning_by_anchor_index.get(&idx).map(String::as_str);
-                    let field_name = self.reasoning_field_name.unwrap_or_else(|| reasoning_field_name(&provider.name));
-                    push_tool_call_message(&mut messages, tool_call, reasoning, field_name);
+                    push_tool_call_message(&mut messages, tool_call, reasoning, reasoning_field);
                 }
                 ResponseItem::CustomToolCallOutput { call_id, output } => {
                     messages.push(json!({
@@ -307,6 +316,7 @@ impl<'a> ChatRequestBuilder<'a> {
             "model": self.model,
             "messages": messages,
             "stream": true,
+            "stream_options": {"include_usage": true},
             "tools": self.tools,
         });
 
@@ -412,15 +422,6 @@ fn provider_explicitly_unsupports_role(model_slug: &str, role: &str) -> bool {
     is_deepseek_variant(model_slug)
 }
 
-/// Get the field name for reasoning content based on provider.
-/// DeepSeek uses "reasoning_content", while most others use "reasoning".
-fn reasoning_field_name(provider_name: &str) -> &'static str {
-    if is_deepseek_variant(provider_name) {
-        "reasoning_content"
-    } else {
-        "reasoning"
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -734,5 +735,49 @@ mod tests {
 
         let assistant_msg = messages.iter().find(|m| m["role"] == "assistant").unwrap();
         assert_eq!(assistant_msg["reasoning_content"], "let me think");
+    }
+
+    #[test]
+    fn deepseek_model_slug_triggers_reasoning_content_even_with_non_deepseek_provider() {
+        // Regression: when DeepSeek-R1 is accessed via a generic provider (e.g. Ollama,
+        // NVIDIA NIM) the provider name won't contain "deepseek", but the model slug
+        // does.  We must still include `reasoning_content` on every assistant message.
+        let prompt_input = vec![
+            ResponseItem::Message {
+                id: None,
+                role: "user".to_string(),
+                content: vec![ContentItem::InputText { text: "hi".to_string() }],
+                end_turn: None,
+                phase: None,
+            },
+            ResponseItem::Message {
+                id: None,
+                role: "assistant".to_string(),
+                content: vec![ContentItem::OutputText { text: "hello".to_string() }],
+                end_turn: None,
+                phase: None,
+            },
+            ResponseItem::Message {
+                id: None,
+                role: "user".to_string(),
+                content: vec![ContentItem::InputText { text: "second turn".to_string() }],
+                end_turn: None,
+                phase: None,
+            },
+        ];
+
+        // Provider name is "openai" (non-deepseek), but model slug identifies the model.
+        let builder = ChatRequestBuilder::new("deepseek-r1", "sys", &prompt_input, &[])
+            .model_slug("deepseek-r1");
+
+        let request = builder.build(&provider()).unwrap();
+        let messages = request.body["messages"].as_array().unwrap();
+
+        let assistant_msg = messages.iter().find(|m| m["role"] == "assistant").unwrap();
+        assert!(
+            assistant_msg.get("reasoning_content").is_some(),
+            "DeepSeek model slug must trigger reasoning_content inclusion (got: {})", assistant_msg
+        );
+        assert_eq!(assistant_msg["reasoning_content"], "");
     }
 }
