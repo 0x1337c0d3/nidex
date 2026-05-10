@@ -14,7 +14,6 @@ const BASE_INSTRUCTIONS_WITH_APPLY_PATCH: &str =
     include_str!("../../prompt_with_apply_patch_instructions.md");
 
 const GEMINI4_INSTRUCTIONS: &str = include_str!("../../gemma-4_prompt.md");
-const DEFAULT_INSTRUCTIONS: &str = include_str!("../../default_prompt.md");
 const CODEX_INSTRUCTIONS: &str = include_str!("../../codex_prompt.md");
 
 pub(crate) const CONTEXT_WINDOW_272K: i64 = 272_000;
@@ -103,20 +102,10 @@ pub(crate) fn find_model_info_for_slug(slug: &str) -> ModelInfo {
             truncation_policy: TruncationPolicyConfig::bytes(10_000),
             context_window: Some(CONTEXT_WINDOW_128K),
         )
-    } else if is_codex_model(slug) {
-        model_info!(
-            slug,
-            base_instructions: CODEX_INSTRUCTIONS.to_string(),
-            shell_type: ConfigShellToolType::ShellCommand,
-            supports_reasoning_summaries: true,
-            support_verbosity: true,
-            truncation_policy: TruncationPolicyConfig::bytes(10_000),
-            context_window: Some(CONTEXT_WINDOW_128K),
-        )
     } else {
         model_info!(
             slug,
-            base_instructions: DEFAULT_INSTRUCTIONS.to_string(),
+            base_instructions: CODEX_INSTRUCTIONS.to_string(),
             shell_type: ConfigShellToolType::ShellCommand,
             supports_reasoning_summaries: true,
             support_verbosity: true,
@@ -135,10 +124,6 @@ pub(crate) fn find_model_info_for_slug(slug: &str) -> ModelInfo {
     }
 
     model
-}
-
-fn is_codex_model(slug: &str) -> bool {
-    slug == "big-pickle" || slug.starts_with("codex-")
 }
 
 fn supported_reasoning_level_low_medium_high() -> Vec<ReasoningEffortPreset> {

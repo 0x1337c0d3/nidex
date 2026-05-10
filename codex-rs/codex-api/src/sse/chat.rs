@@ -75,8 +75,15 @@ pub async fn process_chat_sse<S>(
     let mut last_tool_call_index: Option<usize> = None;
     let mut assistant_item: Option<ResponseItem> = None;
     let mut reasoning_item: Option<ResponseItem> = None;
-    let mut completed_sent = false;
     let mut saw_tool_calls_finish = false;
+    // Whether a finish_reason was observed; used to distinguish "clean finish without
+    // [DONE]" from "premature stream close" so flush_and_complete can decide whether to
+    // return an error or a normal Completed event.
+    let mut saw_finish_reason = false;
+    // Usage accumulated from any SSE chunk.  Providers such as NVIDIA NIM send the usage
+    // in a separate chunk *after* finish_reason (with choices:[]) and *before* [DONE], so
+    // we must collect it across chunks and attach it only when sending Completed.
+    let mut pending_usage: Option<TokenUsage> = None;
 
     async fn flush_and_complete(
         tx_event: &mpsc::Sender<Result<ResponseEvent, ApiError>>,
@@ -86,6 +93,7 @@ pub async fn process_chat_sse<S>(
         tool_call_order: &mut Vec<usize>,
         tool_call_order_seen: &mut HashSet<usize>,
         truncated: bool,
+        usage: Option<TokenUsage>,
     ) {
         let mut emitted_any = false;
 
@@ -141,7 +149,7 @@ pub async fn process_chat_sse<S>(
         let _ = tx_event
             .send(Ok(ResponseEvent::Completed {
                 response_id: String::new(),
-                token_usage: None,
+                token_usage: usage,
             }))
             .await;
     }
@@ -160,10 +168,12 @@ pub async fn process_chat_sse<S>(
                 return;
             }
             Ok(None) => {
-                if !completed_sent {
-                    debug!("SSE stream ended without [DONE] sentinel; flushing");
-                    flush_and_complete(&tx_event, &mut reasoning_item, &mut assistant_item, &mut tool_calls, &mut tool_call_order, &mut tool_call_order_seen, true).await;
-                }
+                debug!("SSE stream ended without [DONE] sentinel; flushing");
+                // If we already observed finish_reason, the stream closed cleanly (some
+                // providers don't send [DONE]).  Pass truncated=false so flush_and_complete
+                // emits Completed instead of an error.
+                let truncated = !saw_finish_reason;
+                flush_and_complete(&tx_event, &mut reasoning_item, &mut assistant_item, &mut tool_calls, &mut tool_call_order, &mut tool_call_order_seen, truncated, pending_usage.take()).await;
                 return;
             }
             Err(_) => {
@@ -183,9 +193,7 @@ pub async fn process_chat_sse<S>(
         }
 
         if data == "[DONE]" || data == "DONE" {
-            if !completed_sent {
-                flush_and_complete(&tx_event, &mut reasoning_item, &mut assistant_item, &mut tool_calls, &mut tool_call_order, &mut tool_call_order_seen, false).await;
-            }
+            flush_and_complete(&tx_event, &mut reasoning_item, &mut assistant_item, &mut tool_calls, &mut tool_call_order, &mut tool_call_order_seen, false, pending_usage.take()).await;
             return;
         }
 
@@ -199,6 +207,12 @@ pub async fn process_chat_sse<S>(
                 continue;
             }
         };
+
+        // Collect usage from any chunk — providers such as NVIDIA NIM emit a separate
+        // usage-only chunk (choices:[]) after finish_reason but before [DONE].
+        if let Some(u) = parse_usage(&value) {
+            pending_usage = Some(u);
+        }
 
         let Some(choices) = value.get("choices").and_then(|c| c.as_array()) else {
             if value.get("error").is_some() {
@@ -348,15 +362,13 @@ pub async fn process_chat_sse<S>(
                         .send(Ok(ResponseEvent::OutputItemDone(assistant)))
                         .await;
                 }
-                if !completed_sent {
-                    let _ = tx_event
-                        .send(Ok(ResponseEvent::Completed {
-                            response_id: String::new(),
-                            token_usage: parse_usage(&value),
-                        }))
-                        .await;
-                    completed_sent = true;
-                }
+                // Drop any buffered tool calls — "stop" means plain text end, not tool use.
+                tool_calls.clear();
+                tool_call_order.clear();
+                tool_call_order_seen.clear();
+                // Defer Completed until [DONE] so we can attach the usage-only chunk
+                // that providers like NVIDIA NIM send between finish_reason and [DONE].
+                saw_finish_reason = true;
                 continue;
             }
 
@@ -408,16 +420,9 @@ pub async fn process_chat_sse<S>(
                 };
                 let _ = tx_event.send(Ok(ResponseEvent::OutputItemDone(item))).await;
             }
-            if !completed_sent {
-                let _ = tx_event
-                    .send(Ok(ResponseEvent::Completed {
-                        response_id: String::new(),
-                        token_usage: parse_usage(&value),
-                    }))
-                    .await;
-                completed_sent = true;
-            }
-
+            // Defer Completed until [DONE] so the usage-only chunk (sent by providers
+            // like NVIDIA NIM between finish_reason and [DONE]) can be captured first.
+            saw_finish_reason = true;
             saw_tool_calls_finish = false;
         }
     }
@@ -953,6 +958,49 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert_matches!(&results[0], Err(ApiError::Stream(msg)) if msg.contains("Provider error"));
+    }
+
+    /// Regression: providers such as NVIDIA NIM send usage in a separate chunk (choices:[])
+    /// *after* finish_reason but *before* [DONE].  Previously the code sent Completed at
+    /// finish_reason time with no usage, and the usage-only chunk was silently ignored
+    /// because `completed_sent=true`.  The TUI therefore showed a fixed "95% context left"
+    /// regardless of how many tokens had been used.
+    #[tokio::test]
+    async fn captures_usage_from_chunk_after_finish_reason() {
+        let content_chunk = json!({
+            "choices": [{"delta": {"content": "hello"}}]
+        });
+
+        // finish_reason chunk — usage field absent (sent separately by NVIDIA NIM)
+        let finish_chunk = json!({
+            "choices": [{"finish_reason": "stop", "delta": {}}]
+        });
+
+        // Usage-only chunk — choices is empty, usage is present (OpenAI stream_options format)
+        let usage_chunk = json!({
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 500,
+                "completion_tokens": 100,
+                "total_tokens": 600
+            }
+        });
+
+        let mut body = build_body(&[content_chunk, finish_chunk, usage_chunk]);
+        body.push_str("event: message\ndata: [DONE]\n\n");
+
+        let events = collect_events(&body).await;
+
+        // Completed must carry the usage from the post-finish_reason usage-only chunk.
+        assert_matches!(
+            &events[..],
+            [
+                ResponseEvent::OutputItemAdded(ResponseItem::Message { .. }),
+                ResponseEvent::OutputTextDelta(_),
+                ResponseEvent::OutputItemDone(ResponseItem::Message { .. }),
+                ResponseEvent::Completed { token_usage: Some(usage), .. }
+            ] if usage.input_tokens == 500 && usage.output_tokens == 100 && usage.total_tokens == 600
+        );
     }
 
     /// Regression: when the SSE stream closes without [DONE] and with no content at all

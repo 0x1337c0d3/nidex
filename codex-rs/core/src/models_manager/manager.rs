@@ -192,30 +192,31 @@ impl ModelsManager {
         match refresh_strategy {
             RefreshStrategy::Offline => {
                 // Only try to load from cache, never fetch
-                self.try_load_cache().await;
+                self.try_load_cache(config).await;
                 Ok(())
             }
             RefreshStrategy::OnlineIfUncached => {
                 // Try cache first, fall back to online if unavailable
-                if self.try_load_cache().await {
+                if self.try_load_cache(config).await {
                     return Ok(());
                 }
-                self.fetch_and_update_models().await
+                self.fetch_and_update_models(config).await
             }
             RefreshStrategy::Online => {
                 // Always fetch from network
-                self.fetch_and_update_models().await
+                self.fetch_and_update_models(config).await
             }
         }
     }
 
-    async fn fetch_and_update_models(&self) -> CoreResult<()> {
+    async fn fetch_and_update_models(&self, config: &Config) -> CoreResult<()> {
         let _timer =
             codex_otel::start_global_timer("codex.remote_models.fetch_update.duration_ms", &[]);
         let auth = self.auth_manager.auth().await;
         let auth_mode = self.auth_manager.get_internal_auth_mode();
-        let api_provider = self.provider.to_api_provider(auth_mode)?;
-        let api_auth = auth_provider_from_auth(auth.clone(), &self.provider)?;
+        // Use the provider from config, not the stored provider
+        let api_provider = config.model_provider.to_api_provider(auth_mode)?;
+        let api_auth = auth_provider_from_auth(auth.clone(), &config.model_provider)?;
         let transport = ReqwestTransport::new(build_reqwest_client());
         let client = ModelsClient::new(transport, api_provider, api_auth);
 
@@ -231,7 +232,7 @@ impl ModelsManager {
         self.apply_remote_models(models.clone()).await;
         *self.etag.write().await = etag.clone();
         self.cache_manager
-            .persist_cache(&models, etag, client_version)
+            .persist_cache(&models, etag, client_version, config.model_provider.base_url.clone())
             .await;
         Ok(())
     }
@@ -263,11 +264,12 @@ impl ModelsManager {
     }
 
     /// Attempt to satisfy the refresh from the cache when it matches the provider and TTL.
-    async fn try_load_cache(&self) -> bool {
+    async fn try_load_cache(&self, config: &Config) -> bool {
         let _timer =
             codex_otel::start_global_timer("codex.remote_models.load_cache.duration_ms", &[]);
         let client_version = crate::models_manager::client_version_to_whole();
-        let cache = match self.cache_manager.load_fresh(&client_version).await {
+        let provider_base_url = config.model_provider.base_url.as_deref();
+        let cache = match self.cache_manager.load_fresh(&client_version, provider_base_url).await {
             Some(cache) => cache,
             None => return false,
         };
@@ -465,6 +467,7 @@ mod tests {
         let auth_manager =
             AuthManager::from_auth_for_testing(CodexAuth::create_dummy_chatgpt_auth_for_testing());
         let provider = provider_for(server.uri());
+        config.model_provider = provider.clone();
         let manager =
             ModelsManager::with_provider(codex_home.path().to_path_buf(), auth_manager, provider);
 
@@ -522,6 +525,7 @@ mod tests {
             AuthCredentialsStoreMode::File,
         ));
         let provider = provider_for(server.uri());
+        config.model_provider = provider.clone();
         let manager =
             ModelsManager::with_provider(codex_home.path().to_path_buf(), auth_manager, provider);
 
@@ -569,6 +573,7 @@ mod tests {
             AuthCredentialsStoreMode::File,
         ));
         let provider = provider_for(server.uri());
+        config.model_provider = provider.clone();
         let manager =
             ModelsManager::with_provider(codex_home.path().to_path_buf(), auth_manager, provider);
 
@@ -638,6 +643,7 @@ mod tests {
             AuthCredentialsStoreMode::File,
         ));
         let provider = provider_for(server.uri());
+        config.model_provider = provider.clone();
         let manager =
             ModelsManager::with_provider(codex_home.path().to_path_buf(), auth_manager, provider);
 
@@ -704,6 +710,7 @@ mod tests {
         let auth_manager =
             AuthManager::from_auth_for_testing(CodexAuth::create_dummy_chatgpt_auth_for_testing());
         let provider = provider_for(server.uri());
+        config.model_provider = provider.clone();
         let mut manager =
             ModelsManager::with_provider(codex_home.path().to_path_buf(), auth_manager, provider);
         manager.cache_manager.set_ttl(Duration::ZERO);

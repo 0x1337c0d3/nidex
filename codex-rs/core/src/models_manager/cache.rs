@@ -27,18 +27,60 @@ impl ModelsCacheManager {
     }
 
     /// Attempt to load a fresh cache entry. Returns `None` if the cache doesn't exist or is stale.
-    pub(crate) async fn load_fresh(&self, expected_version: &str) -> Option<ModelsCache> {
+    pub(crate) async fn load_fresh(
+        &self,
+        expected_version: &str,
+        provider_base_url: Option<&str>,
+    ) -> Option<ModelsCache> {
+        tracing::debug!("load_fresh called with version={}, provider_url={:?}", expected_version, provider_base_url);
         let cache = match self.load().await {
-            Ok(cache) => cache?,
+            Ok(cache) => cache,
             Err(err) => {
                 error!("failed to load models cache: {err}");
                 return None;
             }
         };
+        let cache = match cache {
+            Some(c) => c,
+            None => {
+                tracing::debug!("no cache file found");
+                return None;
+            }
+        };
+        tracing::debug!("cache loaded: version={:?}, provider_url={:?}", cache.client_version, cache.provider_base_url);
         if cache.client_version.as_deref() != Some(expected_version) {
+            tracing::debug!("version mismatch: cache={:?}, expected={}", cache.client_version, expected_version);
             return None;
         }
         if !cache.is_fresh(self.cache_ttl) {
+            return None;
+        }
+        // Verify the cache was fetched for the same provider base URL
+        if let Some(expected_url) = provider_base_url {
+            let cache_url = cache.provider_base_url.as_deref().unwrap_or("");
+            // Normalize both URLs for comparison (remove trailing slashes)
+            let normalized_cache = if cache_url.ends_with('/') {
+                &cache_url[..cache_url.len() - 1]
+            } else {
+                cache_url
+            };
+            let normalized_expected = if expected_url.ends_with('/') {
+                &expected_url[..expected_url.len() - 1]
+            } else {
+                expected_url
+            };
+            tracing::debug!(
+                expected_url = %normalized_expected,
+                cache_url = %normalized_cache,
+                "checking provider base URL match"
+            );
+            if normalized_cache != normalized_expected {
+                tracing::debug!("provider URL mismatch, cache invalid");
+                return None;
+            }
+        } else if cache.provider_base_url.is_some() {
+            // Cache has a provider URL but we don't expect one
+            tracing::debug!("cache has provider URL but none expected, cache invalid");
             return None;
         }
         Some(cache)
@@ -50,12 +92,14 @@ impl ModelsCacheManager {
         models: &[ModelInfo],
         etag: Option<String>,
         client_version: String,
+        provider_base_url: Option<String>,
     ) {
         let cache = ModelsCache {
             fetched_at: Utc::now(),
             etag,
             client_version: Some(client_version),
             models: models.to_vec(),
+            provider_base_url,
         };
         if let Err(err) = self.save_internal(&cache).await {
             error!("failed to write models cache: {err}");
@@ -137,6 +181,9 @@ pub(crate) struct ModelsCache {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) client_version: Option<String>,
     pub(crate) models: Vec<ModelInfo>,
+    /// Base URL of the provider that fetched these models (for cache key discrimination).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) provider_base_url: Option<String>,
 }
 
 impl ModelsCache {

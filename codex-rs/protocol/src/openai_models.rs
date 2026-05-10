@@ -330,7 +330,10 @@ impl Serialize for ModelsResponse {
         struct Helper<'a> {
             models: &'a [ModelInfo],
         }
-        Helper { models: &self.models }.serialize(s)
+        Helper {
+            models: &self.models,
+        }
+        .serialize(s)
     }
 }
 
@@ -352,7 +355,7 @@ impl<'de> Deserialize<'de> for ModelsResponse {
                     .map(|entry| ModelInfo {
                         display_name: entry.id.clone(),
                         slug: entry.id,
-                        description: Some(format!("NVIDIA model ({})", entry.owned_by)),
+                        description: Some(format!("({})", entry.owned_by)),
                         default_reasoning_level: None,
                         supported_reasoning_levels: Vec::new(),
                         shell_type: ConfigShellToolType::Default,

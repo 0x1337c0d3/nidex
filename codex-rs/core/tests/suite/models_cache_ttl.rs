@@ -137,6 +137,7 @@ async fn renews_cache_ttl_on_matching_models_etag() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn uses_cache_when_version_matches() -> Result<()> {
     let server = MockServer::start().await;
+    let server_uri = format!("{}/v1", server.uri());
     let cached_model = test_remote_model(VERSIONED_MODEL, 1);
     let models_mock = responses::mount_models_once(
         &server,
@@ -154,6 +155,7 @@ async fn uses_cache_when_version_matches() -> Result<()> {
                 etag: None,
                 client_version: Some(codex_core::models_manager::client_version_to_whole()),
                 models: vec![cached_model],
+                provider_base_url: Some(server_uri),
             };
             let cache_path = home.join(CACHE_FILE);
             write_cache_sync(&cache_path, &cache).expect("write cache");
@@ -185,6 +187,7 @@ async fn uses_cache_when_version_matches() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn refreshes_when_cache_version_missing() -> Result<()> {
     let server = MockServer::start().await;
+    let server_uri = format!("{}/v1", server.uri());
     let cached_model = test_remote_model(MISSING_VERSION_MODEL, 1);
     let models_mock = responses::mount_models_once(
         &server,
@@ -202,6 +205,7 @@ async fn refreshes_when_cache_version_missing() -> Result<()> {
                 etag: None,
                 client_version: None,
                 models: vec![cached_model],
+                provider_base_url: Some(server_uri),
             };
             let cache_path = home.join(CACHE_FILE);
             write_cache_sync(&cache_path, &cache).expect("write cache");
@@ -233,6 +237,7 @@ async fn refreshes_when_cache_version_missing() -> Result<()> {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn refreshes_when_cache_version_differs() -> Result<()> {
     let server = MockServer::start().await;
+    let server_uri = format!("{}/v1", server.uri());
     let cached_model = test_remote_model(DIFFERENT_VERSION_MODEL, 1);
     let models_mock = responses::mount_models_once(
         &server,
@@ -251,6 +256,7 @@ async fn refreshes_when_cache_version_differs() -> Result<()> {
                 etag: None,
                 client_version: Some(format!("{client_version}-diff")),
                 models: vec![cached_model],
+                provider_base_url: Some(server_uri),
             };
             let cache_path = home.join(CACHE_FILE);
             write_cache_sync(&cache_path, &cache).expect("write cache");
@@ -314,6 +320,8 @@ struct ModelsCache {
     #[serde(default)]
     client_version: Option<String>,
     models: Vec<ModelInfo>,
+    #[serde(default)]
+    provider_base_url: Option<String>,
 }
 
 fn test_remote_model(slug: &str, priority: i32) -> ModelInfo {
