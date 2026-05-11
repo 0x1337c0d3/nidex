@@ -2312,9 +2312,16 @@ impl ChatComposer {
             self.footer_mode = reset_mode_after_activity(self.footer_mode);
         }
 
-        // If we're capturing a burst and receive Enter, accumulate it instead of inserting.
-        if matches!(input.code, KeyCode::Enter)
-            && !self.disable_paste_burst
+        // If we're capturing a burst and receive plain Enter (no modifier), accumulate it.
+        // Modified Enter (Shift+Enter, Alt+Enter) bypasses burst accumulation and inserts directly.
+        if matches!(
+            input,
+            KeyEvent {
+                code: KeyCode::Enter,
+                modifiers: KeyModifiers::NONE,
+                ..
+            }
+        ) && !self.disable_paste_burst
             && self.paste_burst.is_active()
             && self.paste_burst.append_newline_if_active(now)
         {
@@ -2379,13 +2386,24 @@ impl ChatComposer {
             }
         }
 
-        // Flush any buffered burst before applying a non-char input (arrow keys, etc).
+        // Flush any buffered burst before applying a non-char input (arrow keys, etc) or a
+        // modified Enter (Shift+Enter, Alt+Enter — intentional newline, not a paste newline).
+        //
+        // Plain Enter is excluded so multi-line paste bursts with blank lines aren't cut short.
         //
         // `clear_window_after_non_char()` clears `last_plain_char_time`. If we cleared that while
         // `PasteBurst.buffer` is non-empty, `flush_if_due()` would no longer have a timestamp to
         // time out against, and the buffered paste could remain stuck until another plain char
         // arrives.
-        if !matches!(input.code, KeyCode::Char(_) | KeyCode::Enter)
+        let is_plain_enter = matches!(
+            input,
+            KeyEvent {
+                code: KeyCode::Enter,
+                modifiers: KeyModifiers::NONE,
+                ..
+            }
+        );
+        if !matches!(input.code, KeyCode::Char(_)) && !is_plain_enter
             && let Some(pasted) = self.paste_burst.flush_before_modified_input()
         {
             self.handle_paste(pasted);
@@ -2417,7 +2435,11 @@ impl ChatComposer {
                 }
             }
             KeyCode::Enter => {
-                // Keep burst window alive (supports blank lines in paste).
+                if modifiers != KeyModifiers::NONE {
+                    // Shift/Alt+Enter is an intentional newline — clear the burst window.
+                    self.paste_burst.clear_window_after_non_char();
+                }
+                // else: plain Enter in a burst keeps the window alive (blank lines in paste).
             }
             _ => {
                 // Other keys: clear burst window (buffer should have been flushed above if needed).

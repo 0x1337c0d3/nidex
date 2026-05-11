@@ -863,7 +863,7 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
                 condition: DisplayCondition::WhenShiftEnterHint,
             },
             ShortcutBinding {
-                key: key_hint::ctrl(KeyCode::Char('j')),
+                key: key_hint::alt(KeyCode::Enter),
                 condition: DisplayCondition::WhenNotShiftEnterHint,
             },
         ],
