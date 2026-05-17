@@ -449,9 +449,7 @@ mod tests {
     use super::*;
     use crate::auth::storage::FileAuthStorage;
     use crate::auth::storage::get_auth_file;
-    use base64::Engine;
     use pretty_assertions::assert_eq;
-    use serde::Serialize;
     use serde_json::json;
     use tempfile::tempdir;
 

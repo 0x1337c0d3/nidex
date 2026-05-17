@@ -11,7 +11,7 @@ use codex_app_server_protocol::LogoutAccountResponse;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::ServerNotification;
 use codex_core::auth::AuthCredentialsStoreMode;
-use codex_login::login_with_api_key;
+use codex_core::auth::login_with_api_key;
 use pretty_assertions::assert_eq;
 use std::path::Path;
 use tempfile::TempDir;

@@ -29,9 +29,6 @@ use codex_app_server_protocol::ServerNotification;
 use codex_app_server_protocol::experimental_required_message;
 use codex_core::AuthManager;
 use codex_core::ThreadManager;
-use codex_core::auth::ExternalAuthRefreshContext;
-use codex_core::auth::ExternalAuthRefresher;
-use codex_core::auth::ExternalAuthTokens;
 use codex_core::config::Config;
 use codex_core::config_loader::CloudRequirementsLoader;
 use codex_core::config_loader::LoaderOverrides;
@@ -48,24 +45,6 @@ use toml::Value as TomlValue;
 
 #[allow(dead_code)]
 const EXTERNAL_AUTH_REFRESH_TIMEOUT: Duration = Duration::from_secs(10);
-
-#[derive(Clone)]
-struct ExternalAuthRefreshBridge {
-    #[allow(dead_code)]
-    outgoing: Arc<OutgoingMessageSender>,
-}
-
-#[async_trait]
-impl ExternalAuthRefresher for ExternalAuthRefreshBridge {
-    async fn refresh(
-        &self,
-        _context: ExternalAuthRefreshContext,
-    ) -> std::io::Result<ExternalAuthTokens> {
-        Err(std::io::Error::other(
-            "ChatGPT external authentication is no longer supported. Please use API key authentication instead."
-        ))
-    }
-}
 
 pub(crate) struct MessageProcessor {
     #[allow(dead_code)]
@@ -110,10 +89,6 @@ impl MessageProcessor {
             false,
             config.cli_auth_credentials_store_mode,
         );
-        auth_manager.set_forced_chatgpt_workspace_id(config.forced_chatgpt_workspace_id.clone());
-        auth_manager.set_external_auth_refresher(Arc::new(ExternalAuthRefreshBridge {
-            outgoing: outgoing.clone(),
-        }));
         let thread_manager = Arc::new(ThreadManager::with_model_provider(
             config.codex_home.clone(),
             auth_manager.clone(),

@@ -201,30 +201,3 @@ async fn get_auth_status_with_api_key_no_include_token() -> Result<()> {
     assert!(status.auth_token.is_none(), "token must be omitted");
     Ok(())
 }
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn login_api_key_rejected_when_forced_chatgpt() -> Result<()> {
-    let codex_home = TempDir::new()?;
-    create_config_toml_forced_login(codex_home.path(), "chatgpt")?;
-
-    let mut mcp = McpProcess::new(codex_home.path()).await?;
-    timeout(DEFAULT_READ_TIMEOUT, mcp.initialize()).await??;
-
-    let request_id = mcp
-        .send_login_api_key_request(LoginApiKeyParams {
-            api_key: "sk-test-key".to_string(),
-        })
-        .await?;
-
-    let err: JSONRPCError = timeout(
-        DEFAULT_READ_TIMEOUT,
-        mcp.read_stream_until_error_message(RequestId::Integer(request_id)),
-    )
-    .await??;
-
-    assert_eq!(
-        err.error.message,
-        "API key login is disabled. Use ChatGPT login instead."
-    );
-    Ok(())
-}

@@ -88,18 +88,9 @@ pub(crate) fn compose_account_display(
     auth_manager: &AuthManager,
     plan: Option<PlanType>,
 ) -> Option<StatusAccountDisplay> {
-    let auth = auth_manager.auth_cached()?;
+    let _auth = auth_manager.auth_cached()?;
 
-    match auth {
-        CodexAuth::Chatgpt(_) | CodexAuth::ChatgptAuthTokens(_) => {
-            let email = auth.get_account_email();
-            let plan = plan
-                .map(|plan_type| title_case(format!("{plan_type:?}").as_str()))
-                .or_else(|| Some("Unknown".to_string()));
-            Some(StatusAccountDisplay::ChatGpt { email, plan })
-        }
-        CodexAuth::ApiKey(_) => Some(StatusAccountDisplay::ApiKey),
-    }
+    Some(StatusAccountDisplay::ApiKey)
 }
 
 pub(crate) fn format_tokens_compact(value: i64) -> String {

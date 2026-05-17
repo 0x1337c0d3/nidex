@@ -957,15 +957,14 @@ impl App {
             model = updated_model;
         }
 
-        let auth = auth_manager.auth().await;
-        let auth_ref = auth.as_ref();
+        let auth = auth_manager.auth();
         let otel_manager = OtelManager::new(
             ThreadId::new(),
             model.as_str(),
             model.as_str(),
-            auth_ref.and_then(CodexAuth::get_account_id),
-            auth_ref.and_then(CodexAuth::get_account_email),
-            auth_ref.map(CodexAuth::api_auth_mode),
+            None,
+            None,
+            auth.as_ref().map(CodexAuth::api_auth_mode),
             config.otel.log_user_prompt,
             codex_core::terminal::user_agent(),
             SessionSource::Cli,

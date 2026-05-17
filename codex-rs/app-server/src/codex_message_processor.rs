@@ -191,7 +191,6 @@ use codex_core::rollout_date_parts;
 use codex_core::sandboxing::SandboxPermissions;
 use codex_core::state_db::get_state_db;
 use codex_core::windows_sandbox::WindowsSandboxLevelExt;
-use codex_login::ShutdownHandle;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ForcedLoginMethod;
 use codex_protocol::config_types::WindowsSandboxLevel;
@@ -253,20 +252,6 @@ pub(crate) type TurnSummaryStore = Arc<Mutex<HashMap<ThreadId, TurnSummary>>>;
 const THREAD_LIST_DEFAULT_LIMIT: usize = 25;
 const THREAD_LIST_MAX_LIMIT: usize = 100;
 
-// Duration before a ChatGPT login attempt is abandoned.
-#[allow(dead_code)]
-const LOGIN_CHATGPT_TIMEOUT: Duration = Duration::from_secs(10 * 60);
-struct ActiveLogin {
-    shutdown_handle: ShutdownHandle,
-#[allow(dead_code)]
-    login_id: Uuid,
-}
-
-impl Drop for ActiveLogin {
-    fn drop(&mut self) {
-        self.shutdown_handle.shutdown();
-    }
-}
 
 /// Handles JSON-RPC messages for Codex threads (and legacy conversation APIs).
 pub(crate) struct CodexMessageProcessor {
@@ -279,7 +264,6 @@ pub(crate) struct CodexMessageProcessor {
     cloud_requirements: CloudRequirementsLoader,
     conversation_listeners: HashMap<Uuid, oneshot::Sender<()>>,
     listener_thread_ids_by_subscription: HashMap<Uuid, ThreadId>,
-    active_login: Arc<Mutex<Option<ActiveLogin>>>,
     // Queue of pending interrupt requests per conversation. We reply when TurnAborted arrives.
     pending_interrupts: PendingInterrupts,
     // Queue of pending rollback requests per conversation. We reply when ThreadRollback arrives.
@@ -355,7 +339,6 @@ impl CodexMessageProcessor {
             cloud_requirements,
             conversation_listeners: HashMap::new(),
             listener_thread_ids_by_subscription: HashMap::new(),
-            active_login: Arc::new(Mutex::new(None)),
             pending_interrupts: Arc::new(Mutex::new(HashMap::new())),
             pending_rollbacks: Arc::new(Mutex::new(HashMap::new())),
             turn_summary_store: Arc::new(Mutex::new(HashMap::new())),
@@ -681,28 +664,6 @@ impl CodexMessageProcessor {
         &mut self,
         params: &LoginApiKeyParams,
     ) -> std::result::Result<(), JSONRPCErrorError> {
-        if self.auth_manager.is_external_auth_active() {
-            return Err(self.external_auth_active_error());
-        }
-
-        if matches!(
-            self.config.forced_login_method,
-            Some(ForcedLoginMethod::Chatgpt)
-        ) {
-            return Err(JSONRPCErrorError {
-                code: INVALID_REQUEST_ERROR_CODE,
-                message: "API key login is disabled. Use ChatGPT login instead.".to_string(),
-                data: None,
-            });
-        }
-
-        // Cancel any active login attempt.
-        {
-            let mut guard = self.active_login.lock().await;
-            if let Some(active) = guard.take() {
-                drop(active);
-            }
-        }
 
         match login_with_api_key(
             &self.config.codex_home,
@@ -800,14 +761,6 @@ impl CodexMessageProcessor {
     }
 
     async fn logout_common(&mut self) -> std::result::Result<Option<AuthMode>, JSONRPCErrorError> {
-        // Cancel any active login attempt.
-        {
-            let mut guard = self.active_login.lock().await;
-            if let Some(active) = guard.take() {
-                drop(active);
-            }
-        }
-
         if let Err(err) = self.auth_manager.logout() {
             return Err(JSONRPCErrorError {
                 code: INTERNAL_ERROR_CODE,
@@ -865,13 +818,8 @@ impl CodexMessageProcessor {
         }
     }
 
-    async fn refresh_token_if_requested(&self, do_refresh: bool) {
-        if self.auth_manager.is_external_auth_active() {
-            return;
-        }
-        if do_refresh && let Err(err) = self.auth_manager.refresh_token().await {
-            tracing::warn!("failed to refresh token while getting account: {err}");
-        }
+    async fn refresh_token_if_requested(&self, _do_refresh: bool) {
+        // API-key-only auth doesn't require token refreshing
     }
 
     async fn get_auth_status(&self, request_id: RequestId, params: GetAuthStatusParams) {
@@ -892,7 +840,7 @@ impl CodexMessageProcessor {
                 requires_openai_auth: Some(false),
             }
         } else {
-            match self.auth_manager.auth().await {
+            match self.auth_manager.auth() {
                 Some(auth) => {
                     let auth_mode = auth.api_auth_mode();
                     let (reported_auth_method, token_opt) = match auth.get_token() {
@@ -943,17 +891,6 @@ impl CodexMessageProcessor {
         let account = match self.auth_manager.auth_cached() {
             Some(auth) => Some(match auth {
                 CodexAuth::ApiKey(_) => Account::ApiKey {},
-                CodexAuth::Chatgpt(_) | CodexAuth::ChatgptAuthTokens(_) => {
-                    // ChatGPT auth is no longer supported by the protocol layer
-                    let error = JSONRPCErrorError {
-                        code: INVALID_REQUEST_ERROR_CODE,
-                        message: "ChatGPT authentication is no longer supported. Please use API key authentication."
-                            .to_string(),
-                        data: None,
-                    };
-                    self.outgoing.send_error(request_id, error).await;
-                    return;
-                }
             }),
             None => None,
         };
@@ -1015,11 +952,8 @@ impl CodexMessageProcessor {
     }
 
     async fn get_user_info(&self, request_id: RequestId) {
-        // Read alleged user email from cached auth (best-effort; not verified).
-        let alleged_user_email = self
-            .auth_manager
-            .auth_cached()
-            .and_then(|a| a.get_account_email());
+        // API-key-only auth doesn't have account email information
+        let alleged_user_email = None;
 
         let response = UserInfoResponse { alleged_user_email };
         self.outgoing.send_response(request_id, response).await;
@@ -3839,10 +3773,11 @@ impl CodexMessageProcessor {
         let authenticated = if !self.config.model_provider.requires_openai_auth {
             true
         } else {
-            matches!(
-                self.auth_manager.auth().await,
-                Some(auth) if auth.get_token().is_ok_and(|t| !t.is_empty())
-            )
+            self.auth_manager.auth().is_some()
+                && self.auth_manager.auth()
+                    .and_then(|auth| auth.get_token().ok())
+                    .map(|t| !t.is_empty())
+                    .unwrap_or(false)
         };
         self.outgoing
             .send_response(request_id, AcpAuthenticateResponse { authenticated })

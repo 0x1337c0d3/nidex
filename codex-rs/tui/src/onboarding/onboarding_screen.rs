@@ -11,11 +11,8 @@ use ratatui::style::Color;
 use ratatui::widgets::Clear;
 use ratatui::widgets::WidgetRef;
 
-use codex_protocol::config_types::ForcedLoginMethod;
-
 use crate::LoginStatus;
 use crate::onboarding::auth::AuthModeWidget;
-use crate::onboarding::auth::SignInOption;
 use crate::onboarding::auth::SignInState;
 use crate::onboarding::trust_directory::TrustDirectorySelection;
 use crate::onboarding::trust_directory::TrustDirectoryWidget;
@@ -80,8 +77,6 @@ impl OnboardingScreen {
             config,
         } = args;
         let cwd = config.cwd.clone();
-        let forced_chatgpt_workspace_id = config.forced_chatgpt_workspace_id.clone();
-        let forced_login_method = config.forced_login_method;
         let codex_home = config.codex_home;
         let cli_auth_credentials_store_mode = config.cli_auth_credentials_store_mode;
         let mut steps: Vec<Step> = Vec::new();
@@ -91,22 +86,14 @@ impl OnboardingScreen {
             config.animations,
         )));
         if show_login_screen {
-            let highlighted_mode = match forced_login_method {
-                Some(ForcedLoginMethod::Api) => SignInOption::ApiKey,
-                _ => SignInOption::ChatGpt,
-            };
             steps.push(Step::Auth(AuthModeWidget {
                 request_frame: tui.frame_requester(),
-                highlighted_mode,
                 error: None,
-                sign_in_state: Arc::new(RwLock::new(SignInState::PickMode)),
+                sign_in_state: Arc::new(RwLock::new(SignInState::ApiKeyEntry(Default::default()))),
                 codex_home: codex_home.clone(),
                 cli_auth_credentials_store_mode,
                 login_status,
                 auth_manager,
-                forced_chatgpt_workspace_id,
-                forced_login_method,
-                animations_enabled: config.animations,
             }))
         }
         let is_git_repo = get_git_repo_root(&cwd).is_some();
@@ -410,7 +397,7 @@ pub(crate) async fn run_onboarding_app(
                         && onboarding_screen.steps.iter().any(|step| {
                             if let Step::Auth(w) = step {
                                 w.sign_in_state.read().is_ok_and(|g| {
-                                    matches!(&*g, super::auth::SignInState::ChatGptSuccessMessage)
+                                    matches!(&*g, super::auth::SignInState::ApiKeyConfigured)
                                 })
                             } else {
                                 false
