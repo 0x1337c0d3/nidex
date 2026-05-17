@@ -8,7 +8,6 @@ use crate::codex_message_processor::CodexMessageProcessorArgs;
 use crate::config_api::ConfigApi;
 use crate::error_code::INVALID_REQUEST_ERROR_CODE;
 use crate::outgoing_message::OutgoingMessageSender;
-use async_trait::async_trait;
 use codex_app_server_protocol::AgentCapabilities;
 use codex_app_server_protocol::AgentInfo;
 use codex_app_server_protocol::ClientRequest;

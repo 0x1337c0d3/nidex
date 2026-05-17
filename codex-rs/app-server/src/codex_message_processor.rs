@@ -192,7 +192,6 @@ use codex_core::sandboxing::SandboxPermissions;
 use codex_core::state_db::get_state_db;
 use codex_core::windows_sandbox::WindowsSandboxLevelExt;
 use codex_protocol::ThreadId;
-use codex_protocol::config_types::ForcedLoginMethod;
 use codex_protocol::config_types::WindowsSandboxLevel;
 use codex_protocol::dynamic_tools::DynamicToolSpec as CoreDynamicToolSpec;
 use codex_protocol::items::TurnItem;
@@ -648,15 +647,6 @@ impl CodexMessageProcessor {
                 self.login_api_key_v2(request_id, LoginApiKeyParams { api_key })
                     .await;
             }
-        }
-    }
-
-    fn external_auth_active_error(&self) -> JSONRPCErrorError {
-        JSONRPCErrorError {
-            code: INVALID_REQUEST_ERROR_CODE,
-            message: "External auth is active. Use account/login/start (chatgptAuthTokens) to update it or account/logout to clear it."
-                .to_string(),
-            data: None,
         }
     }
 

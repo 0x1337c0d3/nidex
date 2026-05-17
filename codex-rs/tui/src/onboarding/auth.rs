@@ -3,7 +3,6 @@
 use codex_core::AuthManager;
 use codex_core::auth::AuthCredentialsStoreMode;
 use codex_core::auth::login_with_api_key;
-use codex_core::auth::read_openai_api_key_from_env;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
@@ -42,12 +41,6 @@ pub(crate) enum SignInState {
     ApiKeyConfigured,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum SignInOption {
-    ApiKey,
-}
-
-
 #[derive(Clone, Default)]
 pub(crate) struct ApiKeyInputState {
     value: String,
@@ -76,11 +69,6 @@ pub(crate) struct AuthModeWidget {
 }
 
 impl AuthModeWidget {
-    fn start(&mut self) {
-        self.start_api_key_entry();
-    }
-
-
     fn render_api_key_configured(&self, area: Rect, buf: &mut Buffer) {
         let lines = vec![
             "✓ API key configured".fg(Color::Green).into(),
@@ -235,32 +223,6 @@ impl AuthModeWidget {
         drop(guard);
         self.request_frame.schedule_frame();
         true
-    }
-
-    fn start_api_key_entry(&mut self) {
-        self.error = None;
-        let prefill_from_env = read_openai_api_key_from_env();
-        let mut guard = self.sign_in_state.write().unwrap();
-        match &mut *guard {
-            SignInState::ApiKeyEntry(state) => {
-                if state.value.is_empty() {
-                    if let Some(prefill) = prefill_from_env {
-                        state.value = prefill;
-                        state.prepopulated_from_env = true;
-                    } else {
-                        state.prepopulated_from_env = false;
-                    }
-                }
-            }
-            _ => {
-                *guard = SignInState::ApiKeyEntry(ApiKeyInputState {
-                    value: prefill_from_env.clone().unwrap_or_default(),
-                    prepopulated_from_env: prefill_from_env.is_some(),
-                });
-            }
-        }
-        drop(guard);
-        self.request_frame.schedule_frame();
     }
 
     fn save_api_key(&mut self, api_key: String) {

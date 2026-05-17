@@ -3,7 +3,6 @@ use crate::text_formatting;
 use chrono::DateTime;
 use chrono::Local;
 use codex_core::AuthManager;
-use codex_core::CodexAuth;
 use codex_core::config::Config;
 use codex_core::project_doc::discover_project_doc_paths;
 use codex_protocol::account::PlanType;
@@ -86,7 +85,7 @@ pub(crate) fn compose_agents_summary(config: &Config) -> String {
 
 pub(crate) fn compose_account_display(
     auth_manager: &AuthManager,
-    plan: Option<PlanType>,
+    _plan: Option<PlanType>,
 ) -> Option<StatusAccountDisplay> {
     let _auth = auth_manager.auth_cached()?;
 
@@ -166,15 +165,3 @@ pub(crate) fn format_reset_timestamp(dt: DateTime<Local>, captured_at: DateTime<
     }
 }
 
-pub(crate) fn title_case(s: &str) -> String {
-    if s.is_empty() {
-        return String::new();
-    }
-    let mut chars = s.chars();
-    let first = match chars.next() {
-        Some(c) => c,
-        None => return String::new(),
-    };
-    let rest: String = chars.as_str().to_ascii_lowercase();
-    first.to_uppercase().collect::<String>() + &rest
-}

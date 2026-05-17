@@ -176,20 +176,6 @@ pub fn enforce_login_restrictions(_config: &Config) -> std::io::Result<()> {
     Ok(())
 }
 
-fn logout_with_message(
-    codex_home: &Path,
-    message: String,
-    auth_credentials_store_mode: AuthCredentialsStoreMode,
-) -> std::io::Result<()> {
-    // External auth tokens live in the ephemeral store, but persistent auth may still exist
-    // from earlier logins. Clear both so a forced logout truly removes all active auth.
-    let removal_result = logout_all_stores(codex_home, auth_credentials_store_mode);
-    let error_message = match removal_result {
-        Ok(_) => message,
-        Err(err) => format!("{message}. Failed to remove auth.json: {err}"),
-    };
-    Err(std::io::Error::other(error_message))
-}
 
 fn logout_all_stores(
     codex_home: &Path,

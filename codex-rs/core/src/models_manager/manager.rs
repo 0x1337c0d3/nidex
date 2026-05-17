@@ -50,7 +50,6 @@ pub struct ModelsManager {
     auth_manager: Arc<AuthManager>,
     etag: RwLock<Option<String>>,
     cache_manager: ModelsCacheManager,
-    provider: ModelProviderInfo,
 }
 
 impl ModelsManager {
@@ -66,7 +65,6 @@ impl ModelsManager {
             auth_manager,
             etag: RwLock::new(None),
             cache_manager,
-            provider: ModelProviderInfo::create_openai_provider(),
         }
     }
 
@@ -331,7 +329,7 @@ impl ModelsManager {
     pub fn with_provider(
         codex_home: PathBuf,
         auth_manager: Arc<AuthManager>,
-        provider: ModelProviderInfo,
+        _provider: ModelProviderInfo,
     ) -> Self {
         let cache_path = codex_home.join(MODEL_CACHE_FILE);
         let cache_manager = ModelsCacheManager::new(cache_path, DEFAULT_MODEL_CACHE_TTL);
@@ -341,7 +339,6 @@ impl ModelsManager {
             auth_manager,
             etag: RwLock::new(None),
             cache_manager,
-            provider,
         }
     }
 
