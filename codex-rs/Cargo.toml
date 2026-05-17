@@ -19,7 +19,6 @@ members = [
     "keyring-store",
     "file-search",
     "linux-sandbox",
-    "login",
     "mcp-server",
     "network-proxy",
     "ollama",
@@ -78,7 +77,6 @@ codex-file-search = { path = "file-search" }
 codex-git = { path = "utils/git" }
 codex-keyring-store = { path = "keyring-store" }
 codex-linux-sandbox = { path = "linux-sandbox" }
-codex-login = { path = "login" }
 codex-mcp-server = { path = "mcp-server" }
 codex-ollama = { path = "ollama" }
 codex-otel = { path = "otel" }

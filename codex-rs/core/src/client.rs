@@ -6,7 +6,6 @@ use std::sync::RwLock;
 use crate::api_bridge::CoreAuthProvider;
 use crate::api_bridge::auth_provider_from_auth;
 use crate::api_bridge::map_api_error;
-use crate::auth::UnauthorizedRecovery;
 use crate::turn_metadata::build_turn_metadata_header;
 use codex_api::AggregateStreamExt;
 use codex_api::ChatClient as ApiChatClient;
@@ -56,7 +55,6 @@ use tracing::warn;
 
 use crate::AuthManager;
 use crate::auth::CodexAuth;
-use crate::auth::RefreshTokenError;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
@@ -268,7 +266,7 @@ impl ModelClient {
         let api_provider = self
             .state
             .provider
-            .to_api_provider(auth.as_ref().map(CodexAuth::internal_auth_mode))?;
+            .to_api_provider(auth.as_ref().map(CodexAuth::api_auth_mode))?;
         let api_auth = auth_provider_from_auth(auth.clone(), &self.state.provider)?;
         let transport = ReqwestTransport::new(build_reqwest_client());
         let request_telemetry = self.build_request_telemetry();
@@ -562,45 +560,34 @@ impl ModelClientSession {
         let conversation_id = self.state.conversation_id.to_string();
         let session_source = self.state.session_source.clone();
 
-        let mut auth_recovery = auth_manager
-            .as_ref()
-            .map(super::auth::AuthManager::unauthorized_recovery);
-        loop {
-            let auth = match auth_manager.as_ref() {
-                Some(manager) => manager.auth().await,
-                None => None,
-            };
-            let api_provider = self
-                .state
-                .provider
-                .to_api_provider(auth.as_ref().map(CodexAuth::internal_auth_mode))?;
-            let api_auth = auth_provider_from_auth(auth.clone(), &self.state.provider)?;
-            let transport = ReqwestTransport::new(build_reqwest_client());
-            let (request_telemetry, sse_telemetry) = self.build_streaming_telemetry();
-            let client = ApiChatClient::new(transport, api_provider, api_auth)
-                .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
+        let auth = match auth_manager.as_ref() {
+            Some(manager) => manager.auth(),
+            None => None,
+        };
+        let api_provider = self
+            .state
+            .provider
+            .to_api_provider(auth.as_ref().map(CodexAuth::api_auth_mode))?;
+        let api_auth = auth_provider_from_auth(auth.clone(), &self.state.provider)?;
+        let transport = ReqwestTransport::new(build_reqwest_client());
+        let (request_telemetry, sse_telemetry) = self.build_streaming_telemetry();
+        let client = ApiChatClient::new(transport, api_provider, api_auth)
+            .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
 
-            let stream_result = client
-                .stream_prompt_with_roles_and_reasoning(
-                    &self.state.model_info.slug,
-                    &api_prompt,
-                    Some(conversation_id.clone()),
-                    Some(session_source.clone()),
-                    Some(self.state.model_info.supported_message_roles.clone()),
-                    self.state.model_info.reasoning_field_name.as_deref(),
-                )
-                .await;
+        let stream_result = client
+            .stream_prompt_with_roles_and_reasoning(
+                &self.state.model_info.slug,
+                &api_prompt,
+                Some(conversation_id.clone()),
+                Some(session_source.clone()),
+                Some(self.state.model_info.supported_message_roles.clone()),
+                self.state.model_info.reasoning_field_name.as_deref(),
+            )
+            .await;
 
-            match stream_result {
-                Ok(stream) => return Ok(stream),
-                Err(ApiError::Transport(TransportError::Http { status, .. }))
-                    if status == StatusCode::UNAUTHORIZED =>
-                {
-                    handle_unauthorized(status, &mut auth_recovery).await?;
-                    continue;
-                }
-                Err(err) => return Err(map_api_error(err)),
-            }
+        match stream_result {
+            Ok(stream) => return Ok(stream),
+            Err(err) => return Err(map_api_error(err)),
         }
     }
 
@@ -620,44 +607,33 @@ impl ModelClientSession {
         let auth_manager = self.state.auth_manager.clone();
         let api_prompt = self.build_responses_request(prompt)?;
 
-        let mut auth_recovery = auth_manager
-            .as_ref()
-            .map(super::auth::AuthManager::unauthorized_recovery);
-        loop {
-            let auth = match auth_manager.as_ref() {
-                Some(manager) => manager.auth().await,
-                None => None,
-            };
-            let api_provider = self
-                .state
-                .provider
-                .to_api_provider(auth.as_ref().map(CodexAuth::internal_auth_mode))?;
-            let api_auth = auth_provider_from_auth(auth.clone(), &self.state.provider)?;
-            let transport = ReqwestTransport::new(build_reqwest_client());
-            let (request_telemetry, sse_telemetry) = self.build_streaming_telemetry();
-            let compression = self.responses_request_compression(auth.as_ref());
+        let auth = match auth_manager.as_ref() {
+            Some(manager) => manager.auth(),
+            None => None,
+        };
+        let api_provider = self
+            .state
+            .provider
+            .to_api_provider(auth.as_ref().map(CodexAuth::api_auth_mode))?;
+        let api_auth = auth_provider_from_auth(auth.clone(), &self.state.provider)?;
+        let transport = ReqwestTransport::new(build_reqwest_client());
+        let (request_telemetry, sse_telemetry) = self.build_streaming_telemetry();
+        let compression = self.responses_request_compression(auth.as_ref());
 
-            let client = ApiResponsesClient::new(transport, api_provider, api_auth)
-                .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
+        let client = ApiResponsesClient::new(transport, api_provider, api_auth)
+            .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
 
-            let options = self.build_responses_options(prompt, compression);
+        let options = self.build_responses_options(prompt, compression);
 
-            let stream_result = client
-                .stream_prompt(&self.state.model_info.slug, &api_prompt, options)
-                .await;
+        let stream_result = client
+            .stream_prompt(&self.state.model_info.slug, &api_prompt, options)
+            .await;
 
-            match stream_result {
-                Ok(stream) => {
-                    return Ok(map_response_stream(stream, self.state.otel_manager.clone()));
-                }
-                Err(ApiError::Transport(TransportError::Http { status, .. }))
-                    if status == StatusCode::UNAUTHORIZED =>
-                {
-                    handle_unauthorized(status, &mut auth_recovery).await?;
-                    continue;
-                }
-                Err(err) => return Err(map_api_error(err)),
+        match stream_result {
+            Ok(stream) => {
+                return Ok(map_response_stream(stream, self.state.otel_manager.clone()));
             }
+            Err(err) => return Err(map_api_error(err)),
         }
     }
 
@@ -666,49 +642,34 @@ impl ModelClientSession {
         let auth_manager = self.state.auth_manager.clone();
         let api_prompt = self.build_responses_request(prompt)?;
 
-        let mut auth_recovery = auth_manager
-            .as_ref()
-            .map(super::auth::AuthManager::unauthorized_recovery);
-        loop {
-            let auth = match auth_manager.as_ref() {
-                Some(manager) => manager.auth().await,
-                None => None,
-            };
-            let api_provider = self
-                .state
-                .provider
-                .to_api_provider(auth.as_ref().map(CodexAuth::internal_auth_mode))?;
-            let api_auth = auth_provider_from_auth(auth.clone(), &self.state.provider)?;
-            let compression = self.responses_request_compression(auth.as_ref());
+        let auth = match auth_manager.as_ref() {
+            Some(manager) => manager.auth(),
+            None => None,
+        };
+        let api_provider = self
+            .state
+            .provider
+            .to_api_provider(auth.as_ref().map(CodexAuth::api_auth_mode))?;
+        let api_auth = auth_provider_from_auth(auth.clone(), &self.state.provider)?;
+        let compression = self.responses_request_compression(auth.as_ref());
 
-            let options = self.build_responses_options(prompt, compression);
-            let request = self.prepare_websocket_request(&api_prompt, &options);
+        let options = self.build_responses_options(prompt, compression);
+        let request = self.prepare_websocket_request(&api_prompt, &options);
 
-            let connection = match self
-                .websocket_connection(api_provider.clone(), api_auth.clone(), &options)
-                .await
-            {
-                Ok(connection) => connection,
-                Err(ApiError::Transport(TransportError::Http { status, .. }))
-                    if status == StatusCode::UNAUTHORIZED =>
-                {
-                    handle_unauthorized(status, &mut auth_recovery).await?;
-                    continue;
-                }
-                Err(err) => return Err(map_api_error(err)),
-            };
+        let connection = self
+            .websocket_connection(api_provider.clone(), api_auth.clone(), &options)
+            .await?;
 
-            let stream_result = connection
-                .stream_request(request)
-                .await
-                .map_err(map_api_error)?;
-            self.websocket_last_items = api_prompt.input.clone();
+        let stream_result = connection
+            .stream_request(request)
+            .await
+            .map_err(map_api_error)?;
+        self.websocket_last_items = api_prompt.input.clone();
 
-            return Ok(map_response_stream(
-                stream_result,
-                self.state.otel_manager.clone(),
-            ));
-        }
+        Ok(map_response_stream(
+            stream_result,
+            self.state.otel_manager.clone(),
+        ))
     }
 
     /// Builds request and SSE telemetry for streaming API calls (Chat/Responses).
@@ -858,35 +819,6 @@ where
     ResponseStream { rx_event }
 }
 
-/// Handles a 401 response by optionally refreshing ChatGPT tokens once.
-///
-/// When refresh succeeds, the caller should retry the API call; otherwise
-/// the mapped `CodexErr` is returned to the caller.
-async fn handle_unauthorized(
-    status: StatusCode,
-    auth_recovery: &mut Option<UnauthorizedRecovery>,
-) -> Result<()> {
-    if let Some(recovery) = auth_recovery
-        && recovery.has_next()
-    {
-        return match recovery.next().await {
-            Ok(_) => Ok(()),
-            Err(RefreshTokenError::Permanent(failed)) => Err(CodexErr::RefreshTokenFailed(failed)),
-            Err(RefreshTokenError::Transient(other)) => Err(CodexErr::Io(other)),
-        };
-    }
-
-    Err(map_unauthorized_status(status))
-}
-
-fn map_unauthorized_status(status: StatusCode) -> CodexErr {
-    map_api_error(ApiError::Transport(TransportError::Http {
-        status,
-        url: None,
-        headers: None,
-        body: None,
-    }))
-}
 
 struct ApiTelemetry {
     otel_manager: OtelManager,

@@ -232,7 +232,12 @@ impl ModelsManager {
         self.apply_remote_models(models.clone()).await;
         *self.etag.write().await = etag.clone();
         self.cache_manager
-            .persist_cache(&models, etag, client_version, config.model_provider.base_url.clone())
+            .persist_cache(
+                &models,
+                etag,
+                client_version,
+                config.model_provider.base_url.clone(),
+            )
             .await;
         Ok(())
     }
@@ -269,7 +274,11 @@ impl ModelsManager {
             codex_otel::start_global_timer("codex.remote_models.load_cache.duration_ms", &[]);
         let client_version = crate::models_manager::client_version_to_whole();
         let provider_base_url = config.model_provider.base_url.as_deref();
-        let cache = match self.cache_manager.load_fresh(&client_version, provider_base_url).await {
+        let cache = match self
+            .cache_manager
+            .load_fresh(&client_version, provider_base_url)
+            .await
+        {
             Some(cache) => cache,
             None => return false,
         };

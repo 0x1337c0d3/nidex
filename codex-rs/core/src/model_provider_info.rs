@@ -135,7 +135,7 @@ impl ModelProviderInfo {
 
     pub(crate) fn to_api_provider(
         &self,
-        auth_mode: Option<AuthMode>,
+        _auth_mode: Option<AuthMode>,
     ) -> crate::error::Result<ApiProvider> {
         let default_base_url = "https://api.openai.com/v1";
         let base_url = self

@@ -16,7 +16,6 @@ const BASE_INSTRUCTIONS_WITH_APPLY_PATCH: &str =
 const GEMINI4_INSTRUCTIONS: &str = include_str!("../../gemma-4_prompt.md");
 const CODEX_INSTRUCTIONS: &str = include_str!("../../codex_prompt.md");
 
-pub(crate) const CONTEXT_WINDOW_272K: i64 = 272_000;
 pub(crate) const CONTEXT_WINDOW_128K: i64 = 131_072;
 
 macro_rules! model_info {
@@ -46,7 +45,7 @@ macro_rules! model_info {
             apply_patch_tool_type: None,
             truncation_policy: TruncationPolicyConfig::bytes(10_000),
             supports_parallel_tool_calls: false,
-            context_window: Some(CONTEXT_WINDOW_272K),
+            context_window: Some(CONTEXT_WINDOW_128K),
             auto_compact_token_limit: None,
             effective_context_window_percent: 95,
             experimental_supported_tools: Vec::new(),
