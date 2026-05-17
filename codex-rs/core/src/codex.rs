@@ -786,7 +786,7 @@ impl Session {
         let auth_manager_clone = Arc::clone(&auth_manager);
         let config_for_mcp = Arc::clone(&config);
         let auth_and_mcp_fut = async move {
-            let auth = auth_manager_clone.auth().await;
+            let auth = auth_manager_clone.auth();
             let mcp_servers = effective_mcp_servers(&config_for_mcp, auth.as_ref());
             let auth_statuses = compute_auth_statuses(
                 mcp_servers.iter(),
@@ -842,8 +842,8 @@ impl Session {
             conversation_id,
             session_configuration.collaboration_mode.model(),
             session_configuration.collaboration_mode.model(),
-            auth.and_then(CodexAuth::get_account_id),
-            auth.and_then(CodexAuth::get_account_email),
+            None,
+            None,
             auth.map(CodexAuth::api_auth_mode),
             config.otel.log_user_prompt,
             terminal::user_agent(),
@@ -2244,7 +2244,7 @@ impl Session {
         mcp_servers: HashMap<String, McpServerConfig>,
         store_mode: OAuthCredentialsStoreMode,
     ) {
-        let auth = self.services.auth_manager.auth().await;
+        let auth = self.services.auth_manager.auth();
         let config = self.get_config().await;
         let mcp_servers = with_codex_apps_mcp(
             mcp_servers,
@@ -2788,7 +2788,7 @@ mod handlers {
 
     pub async fn list_mcp_tools(sess: &Session, config: &Arc<Config>, sub_id: String) {
         let mcp_connection_manager = sess.services.mcp_connection_manager.read().await;
-        let auth = sess.services.auth_manager.auth().await;
+        let auth = sess.services.auth_manager.auth();
         let mcp_servers = effective_mcp_servers(config, auth.as_ref());
         let snapshot = collect_mcp_snapshot_from_manager(
             &mcp_connection_manager,

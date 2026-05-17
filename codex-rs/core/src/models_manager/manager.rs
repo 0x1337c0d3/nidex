@@ -61,7 +61,7 @@ impl ModelsManager {
         let cache_path = codex_home.join(MODEL_CACHE_FILE);
         let cache_manager = ModelsCacheManager::new(cache_path, DEFAULT_MODEL_CACHE_TTL);
         Self {
-            local_models: builtin_model_presets(auth_manager.get_internal_auth_mode()),
+            local_models: builtin_model_presets(Some(AuthMode::ApiKey)),
             remote_models: RwLock::new(Self::load_remote_models_from_file().unwrap_or_default()),
             auth_manager,
             etag: RwLock::new(None),
@@ -212,10 +212,9 @@ impl ModelsManager {
     async fn fetch_and_update_models(&self, config: &Config) -> CoreResult<()> {
         let _timer =
             codex_otel::start_global_timer("codex.remote_models.fetch_update.duration_ms", &[]);
-        let auth = self.auth_manager.auth().await;
-        let auth_mode = self.auth_manager.get_internal_auth_mode();
+        let auth = self.auth_manager.auth();
         // Use the provider from config, not the stored provider
-        let api_provider = config.model_provider.to_api_provider(auth_mode)?;
+        let api_provider = config.model_provider.to_api_provider(None)?;
         let api_auth = auth_provider_from_auth(auth.clone(), &config.model_provider)?;
         let transport = ReqwestTransport::new(build_reqwest_client());
         let client = ModelsClient::new(transport, api_provider, api_auth);
@@ -295,10 +294,7 @@ impl ModelsManager {
         let remote_presets: Vec<ModelPreset> = remote_models.into_iter().map(Into::into).collect();
         let existing_presets = self.local_models.clone();
         let mut merged_presets = ModelPreset::merge(remote_presets, existing_presets);
-        let chatgpt_mode = matches!(
-            self.auth_manager.get_internal_auth_mode(),
-            Some(AuthMode::ApiKey)
-        );
+        let chatgpt_mode = self.auth_manager.get_auth_mode().is_some();
         merged_presets = ModelPreset::filter_by_auth(merged_presets, chatgpt_mode);
 
         for preset in &mut merged_presets {
@@ -340,7 +336,7 @@ impl ModelsManager {
         let cache_path = codex_home.join(MODEL_CACHE_FILE);
         let cache_manager = ModelsCacheManager::new(cache_path, DEFAULT_MODEL_CACHE_TTL);
         Self {
-            local_models: builtin_model_presets(auth_manager.get_internal_auth_mode()),
+            local_models: builtin_model_presets(Some(AuthMode::ApiKey)),
             remote_models: RwLock::new(Self::load_remote_models_from_file().unwrap_or_default()),
             auth_manager,
             etag: RwLock::new(None),

@@ -183,7 +183,7 @@ pub(crate) fn auth_provider_from_auth(
         let token = auth.get_token()?;
         Ok(CoreAuthProvider {
             token: Some(token),
-            account_id: auth.get_account_id(),
+            account_id: None,
         })
     } else {
         Ok(CoreAuthProvider {

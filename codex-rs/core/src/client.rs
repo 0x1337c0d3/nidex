@@ -45,7 +45,6 @@ use futures::StreamExt;
 use http::HeaderMap as ApiHeaderMap;
 use http::HeaderValue;
 use http::StatusCode as HttpStatusCode;
-use reqwest::StatusCode;
 use serde_json::Value;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -54,7 +53,6 @@ use tokio_tungstenite::tungstenite::Message;
 use tracing::warn;
 
 use crate::AuthManager;
-use crate::auth::CodexAuth;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
@@ -260,13 +258,13 @@ impl ModelClient {
         }
         let auth_manager = self.state.auth_manager.clone();
         let auth = match auth_manager.as_ref() {
-            Some(manager) => manager.auth().await,
+            Some(manager) => manager.auth(),
             None => None,
         };
         let api_provider = self
             .state
             .provider
-            .to_api_provider(auth.as_ref().map(CodexAuth::api_auth_mode))?;
+            .to_api_provider(None)?;
         let api_auth = auth_provider_from_auth(auth.clone(), &self.state.provider)?;
         let transport = ReqwestTransport::new(build_reqwest_client());
         let request_telemetry = self.build_request_telemetry();
@@ -527,13 +525,12 @@ impl ModelClientSession {
         ))
     }
 
-    fn responses_request_compression(&self, auth: Option<&crate::auth::CodexAuth>) -> Compression {
+    fn responses_request_compression(&self, _auth: Option<&crate::auth::CodexAuth>) -> Compression {
         if self
             .state
             .config
             .features
             .enabled(Feature::EnableRequestCompression)
-            && auth.is_some_and(CodexAuth::is_chatgpt_auth)
             && self.state.provider.is_openai()
         {
             Compression::Zstd
@@ -567,7 +564,7 @@ impl ModelClientSession {
         let api_provider = self
             .state
             .provider
-            .to_api_provider(auth.as_ref().map(CodexAuth::api_auth_mode))?;
+            .to_api_provider(None)?;
         let api_auth = auth_provider_from_auth(auth.clone(), &self.state.provider)?;
         let transport = ReqwestTransport::new(build_reqwest_client());
         let (request_telemetry, sse_telemetry) = self.build_streaming_telemetry();
@@ -614,7 +611,7 @@ impl ModelClientSession {
         let api_provider = self
             .state
             .provider
-            .to_api_provider(auth.as_ref().map(CodexAuth::api_auth_mode))?;
+            .to_api_provider(None)?;
         let api_auth = auth_provider_from_auth(auth.clone(), &self.state.provider)?;
         let transport = ReqwestTransport::new(build_reqwest_client());
         let (request_telemetry, sse_telemetry) = self.build_streaming_telemetry();
@@ -649,7 +646,7 @@ impl ModelClientSession {
         let api_provider = self
             .state
             .provider
-            .to_api_provider(auth.as_ref().map(CodexAuth::api_auth_mode))?;
+            .to_api_provider(None)?;
         let api_auth = auth_provider_from_auth(auth.clone(), &self.state.provider)?;
         let compression = self.responses_request_compression(auth.as_ref());
 
@@ -658,7 +655,8 @@ impl ModelClientSession {
 
         let connection = self
             .websocket_connection(api_provider.clone(), api_auth.clone(), &options)
-            .await?;
+            .await
+            .map_err(map_api_error)?;
 
         let stream_result = connection
             .stream_request(request)

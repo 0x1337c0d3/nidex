@@ -54,9 +54,6 @@ fn codex_apps_mcp_http_headers(auth: Option<&CodexAuth>) -> Option<HashMap<Strin
     if let Some(token) = codex_apps_mcp_bearer_token(auth) {
         headers.insert("Authorization".to_string(), format!("Bearer {token}"));
     }
-    if let Some(account_id) = auth.and_then(CodexAuth::get_account_id) {
-        headers.insert("ChatGPT-Account-ID".to_string(), account_id);
-    }
     if headers.is_empty() {
         None
     } else {
@@ -142,7 +139,7 @@ pub async fn collect_mcp_snapshot(config: &Config) -> McpListToolsResponseEvent 
         false,
         config.cli_auth_credentials_store_mode,
     );
-    let auth = auth_manager.auth().await;
+    let auth = auth_manager.auth();
     let mcp_servers = effective_mcp_servers(config, auth.as_ref());
     if mcp_servers.is_empty() {
         return McpListToolsResponseEvent {

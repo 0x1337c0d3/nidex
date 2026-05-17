@@ -154,9 +154,6 @@ async fn send_track_skill_invocations(auth_manager: &AuthManager, job: TrackEven
         Ok(token) => token,
         Err(_) => return,
     };
-    let Some(account_id) = auth.get_account_id() else {
-        return;
-    };
 
     let mut events = Vec::with_capacity(invocations.len());
     for invocation in invocations {
@@ -203,7 +200,6 @@ async fn send_track_skill_invocations(auth_manager: &AuthManager, job: TrackEven
         .post(&url)
         .timeout(ANALYTICS_EVENTS_TIMEOUT)
         .bearer_auth(&access_token)
-        .header("chatgpt-account-id", &account_id)
         .header("Content-Type", "application/json")
         .json(&payload)
         .send()
