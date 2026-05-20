@@ -404,7 +404,6 @@ impl AuthManager {
 mod tests {
     use super::*;
     use crate::auth::storage::FileAuthStorage;
-    use crate::auth::storage::get_auth_file;
     use pretty_assertions::assert_eq;
     use serde_json::json;
     use tempfile::tempdir;

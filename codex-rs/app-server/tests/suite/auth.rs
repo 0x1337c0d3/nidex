@@ -4,7 +4,6 @@ use app_test_support::to_response;
 use codex_app_server_protocol::AuthMode;
 use codex_app_server_protocol::GetAuthStatusParams;
 use codex_app_server_protocol::GetAuthStatusResponse;
-use codex_app_server_protocol::JSONRPCError;
 use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::LoginApiKeyParams;
 use codex_app_server_protocol::LoginApiKeyResponse;
@@ -56,19 +55,6 @@ approval_policy = "never"
 sandbox_mode = "danger-full-access"
 "#,
     )
-}
-
-fn create_config_toml_forced_login(codex_home: &Path, forced_method: &str) -> std::io::Result<()> {
-    let config_toml = codex_home.join("config.toml");
-    let contents = format!(
-        r#"
-model = "mock-model"
-approval_policy = "never"
-sandbox_mode = "danger-full-access"
-forced_login_method = "{forced_method}"
-"#
-    );
-    std::fs::write(config_toml, contents)
 }
 
 async fn login_with_api_key_via_request(mcp: &mut McpProcess, api_key: &str) -> Result<()> {

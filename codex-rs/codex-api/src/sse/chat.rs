@@ -1,5 +1,7 @@
 use crate::common::ResponseEvent;
 use crate::common::ResponseStream;
+use crate::dsml_parser::DsmlParser;
+use crate::dsml_parser::DsmlSegment;
 use crate::error::ApiError;
 use crate::telemetry::SseTelemetry;
 use codex_client::StreamResponse;
@@ -67,6 +69,7 @@ pub async fn process_chat_sse<S>(
 {
     let mut stream = stream.eventsource();
 
+    let mut dsml_parser = DsmlParser::new();
     let mut tool_calls: HashMap<usize, ToolCallState> = HashMap::new();
     let mut tool_call_order: Vec<usize> = Vec::new();
     let mut tool_call_order_seen: HashSet<usize> = HashSet::new();
@@ -92,10 +95,40 @@ pub async fn process_chat_sse<S>(
         tool_calls: &mut HashMap<usize, ToolCallState>,
         tool_call_order: &mut Vec<usize>,
         tool_call_order_seen: &mut HashSet<usize>,
+        dsml_parser: &mut DsmlParser,
         truncated: bool,
         usage: Option<TokenUsage>,
     ) {
         let mut emitted_any = false;
+
+        // Drain any buffered DSML tool calls (handles truncated streams where the
+        // closing </｜DSML｜tool_calls> tag never arrived).
+        for segment in dsml_parser.finish() {
+            match segment {
+                DsmlSegment::Normal(t) if !t.is_empty() => {
+                    append_assistant_text(tx_event, assistant_item, t).await;
+                }
+                DsmlSegment::Normal(_) => {}
+                DsmlSegment::ToolCalls(calls) => {
+                    if let Some(assistant) = assistant_item.take() {
+                        let _ = tx_event
+                            .send(Ok(ResponseEvent::OutputItemDone(assistant)))
+                            .await;
+                        emitted_any = true;
+                    }
+                    for call in calls {
+                        let item = ResponseItem::FunctionCall {
+                            id: None,
+                            name: call.name,
+                            arguments: call.arguments,
+                            call_id: call.call_id,
+                        };
+                        let _ = tx_event.send(Ok(ResponseEvent::OutputItemDone(item))).await;
+                        emitted_any = true;
+                    }
+                }
+            }
+        }
 
         if let Some(reasoning) = reasoning_item.take() {
             let _ = tx_event
@@ -173,7 +206,7 @@ pub async fn process_chat_sse<S>(
                 // providers don't send [DONE]).  Pass truncated=false so flush_and_complete
                 // emits Completed instead of an error.
                 let truncated = !saw_finish_reason;
-                flush_and_complete(&tx_event, &mut reasoning_item, &mut assistant_item, &mut tool_calls, &mut tool_call_order, &mut tool_call_order_seen, truncated, pending_usage.take()).await;
+                flush_and_complete(&tx_event, &mut reasoning_item, &mut assistant_item, &mut tool_calls, &mut tool_call_order, &mut tool_call_order_seen, &mut dsml_parser, truncated, pending_usage.take()).await;
                 return;
             }
             Err(_) => {
@@ -193,7 +226,7 @@ pub async fn process_chat_sse<S>(
         }
 
         if data == "[DONE]" || data == "DONE" {
-            flush_and_complete(&tx_event, &mut reasoning_item, &mut assistant_item, &mut tool_calls, &mut tool_call_order, &mut tool_call_order_seen, false, pending_usage.take()).await;
+            flush_and_complete(&tx_event, &mut reasoning_item, &mut assistant_item, &mut tool_calls, &mut tool_call_order, &mut tool_call_order_seen, &mut dsml_parser, false, pending_usage.take()).await;
             return;
         }
 
@@ -247,24 +280,56 @@ pub async fn process_chat_sse<S>(
                 }
 
                 if let Some(content) = delta.get("content") {
-                    if content.is_array() {
-                        for item in content.as_array().unwrap_or(&vec![]) {
-                            if let Some(text) = item.get("text").and_then(|t| t.as_str())
-                                && !text.is_empty()
-                            {
-                                append_assistant_text(
-                                    &tx_event,
-                                    &mut assistant_item,
-                                    text.to_string(),
-                                )
-                                .await;
+                    let texts: Vec<String> = if content.is_array() {
+                        content
+                            .as_array()
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|item| {
+                                        item.get("text")
+                                            .and_then(|t| t.as_str())
+                                            .filter(|s| !s.is_empty())
+                                            .map(|s| s.to_string())
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default()
+                    } else if let Some(text) = content.as_str().filter(|s| !s.is_empty()) {
+                        vec![text.to_string()]
+                    } else {
+                        vec![]
+                    };
+                    for text in texts {
+                        let segments = dsml_parser.feed(&text);
+                        for segment in segments {
+                            match segment {
+                                DsmlSegment::Normal(t) => {
+                                    append_assistant_text(&tx_event, &mut assistant_item, t)
+                                        .await;
+                                }
+                                DsmlSegment::ToolCalls(calls) => {
+                                    // Emit any accumulated assistant text before the tool
+                                    // calls to preserve the ordering: text → FunctionCall →
+                                    // FunctionCallOutput.
+                                    if let Some(assistant) = assistant_item.take() {
+                                        let _ = tx_event
+                                            .send(Ok(ResponseEvent::OutputItemDone(assistant)))
+                                            .await;
+                                    }
+                                    for call in calls {
+                                        let item = ResponseItem::FunctionCall {
+                                            id: None,
+                                            name: call.name,
+                                            arguments: call.arguments,
+                                            call_id: call.call_id,
+                                        };
+                                        let _ = tx_event
+                                            .send(Ok(ResponseEvent::OutputItemDone(item)))
+                                            .await;
+                                    }
+                                }
                             }
                         }
-                    } else if let Some(text) = content.as_str()
-                        && !text.is_empty()
-                    {
-                        append_assistant_text(&tx_event, &mut assistant_item, text.to_string())
-                            .await;
                     }
                 }
 
@@ -1015,5 +1080,95 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert_matches!(&results[0], Err(ApiError::Stream(msg)) if msg.contains("without [DONE]"));
+    }
+
+    /// DeepSeek V3+ embeds tool calls in `delta.content` using the DSML XML format rather
+    /// than the standard `delta.tool_calls` JSON field.  The SSE parser must intercept the
+    /// DSML block, suppress it from the assistant message text, and emit it as a FunctionCall.
+    #[tokio::test]
+    async fn parses_dsml_tool_call_from_content() {
+        // U+FF5C = FULLWIDTH VERTICAL LINE, the DSML namespace delimiter.
+        let ns = "\u{FF5C}DSML\u{FF5C}";
+        let dsml_block = format!(
+            "<{ns}tool_calls>\n\
+             <{ns}invoke name=\"search\">\n\
+             <{ns}parameter name=\"query\" string=\"true\">rust async</\
+             {ns}parameter>\n\
+             <{ns}parameter name=\"max_results\" string=\"false\">5</\
+             {ns}parameter>\n\
+             </{ns}invoke>\n\
+             </{ns}tool_calls>"
+        );
+
+        let content_chunk = json!({
+            "choices": [{"delta": {"content": dsml_block}}]
+        });
+        let finish = json!({
+            "choices": [{"finish_reason": "stop"}]
+        });
+
+        let mut body = build_body(&[content_chunk, finish]);
+        body.push_str("event: message\ndata: [DONE]\n\n");
+
+        let events = collect_events(&body).await;
+
+        // The DSML block must produce a FunctionCall, not an assistant Message.
+        assert!(
+            !events.iter().any(|ev| matches!(
+                ev,
+                ResponseEvent::OutputItemDone(ResponseItem::Message { .. })
+            )),
+            "DSML XML must not appear as an assistant message: {events:?}"
+        );
+        assert_matches!(
+            events.as_slice(),
+            [
+                ResponseEvent::OutputItemDone(ResponseItem::FunctionCall { name, arguments, .. }),
+                ResponseEvent::Completed { .. }
+            ] if name == "search" && arguments.contains("\"query\"") && arguments.contains("rust async")
+        );
+    }
+
+    /// Normal assistant text that precedes a DSML block in the same stream must be emitted
+    /// as a Message item, and the DSML block must follow as separate FunctionCall items.
+    #[tokio::test]
+    async fn dsml_tool_call_with_preceding_assistant_text() {
+        let ns = "\u{FF5C}DSML\u{FF5C}";
+        let dsml_block = format!(
+            "<{ns}tool_calls>\n\
+             <{ns}invoke name=\"lookup\">\n\
+             <{ns}parameter name=\"id\" string=\"false\">42</\
+             {ns}parameter>\n\
+             </{ns}invoke>\n\
+             </{ns}tool_calls>"
+        );
+
+        let text_chunk = json!({
+            "choices": [{"delta": {"content": "Let me look that up."}}]
+        });
+        let dsml_chunk = json!({
+            "choices": [{"delta": {"content": dsml_block}}]
+        });
+        let finish = json!({
+            "choices": [{"finish_reason": "stop"}]
+        });
+
+        let mut body = build_body(&[text_chunk, dsml_chunk, finish]);
+        body.push_str("event: message\ndata: [DONE]\n\n");
+
+        let events = collect_events(&body).await;
+
+        // Expect: OutputItemAdded(Message), OutputTextDelta, OutputItemDone(Message),
+        //         OutputItemDone(FunctionCall), Completed
+        assert_matches!(
+            events.as_slice(),
+            [
+                ResponseEvent::OutputItemAdded(ResponseItem::Message { .. }),
+                ResponseEvent::OutputTextDelta(text),
+                ResponseEvent::OutputItemDone(ResponseItem::Message { .. }),
+                ResponseEvent::OutputItemDone(ResponseItem::FunctionCall { name, arguments, .. }),
+                ResponseEvent::Completed { .. }
+            ] if text == "Let me look that up." && name == "lookup" && arguments.contains("42")
+        );
     }
 }

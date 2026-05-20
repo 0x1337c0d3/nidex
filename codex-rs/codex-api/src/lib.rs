@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod common;
+pub(crate) mod dsml_parser;
 pub mod endpoint;
 pub mod error;
 pub mod provider;
