@@ -29,6 +29,10 @@ pub struct ChatRequestBuilder<'a> {
     supported_message_roles: Vec<String>,
     model_slug: Option<&'a str>,
     reasoning_field_name: Option<&'a str>,
+    /// When `Some`, overrides the DeepSeek name-detection heuristic. Pass
+    /// `false` for providers/models that reject `image_url` content (e.g.
+    /// DeepSeek), `true` for providers that accept it.
+    image_url_supported: Option<bool>,
 }
 
 impl<'a> ChatRequestBuilder<'a> {
@@ -53,6 +57,7 @@ impl<'a> ChatRequestBuilder<'a> {
             ],
             model_slug: None,
             reasoning_field_name: None,
+            image_url_supported: None,
         }
     }
 
@@ -81,6 +86,11 @@ impl<'a> ChatRequestBuilder<'a> {
         self
     }
 
+    pub fn image_url_supported(mut self, supported: bool) -> Self {
+        self.image_url_supported = Some(supported);
+        self
+    }
+
     pub fn build(self, provider: &Provider) -> Result<ChatRequest, ApiError> {
         let mut messages = Vec::<Value>::new();
         messages.push(json!({"role": "system", "content": self.instructions}));
@@ -99,11 +109,13 @@ impl<'a> ChatRequestBuilder<'a> {
         });
 
         let input = self.input;
-        let image_url_supported = !is_deepseek_variant(&provider.name)
-            && !self
-                .model_slug
-                .map_or(false, |slug| is_deepseek_variant(slug))
-            && !is_deepseek_variant(self.model);
+        let image_url_supported = self.image_url_supported.unwrap_or_else(|| {
+            !is_deepseek_variant(&provider.name)
+                && !self
+                    .model_slug
+                    .map_or(false, |slug| is_deepseek_variant(slug))
+                && !is_deepseek_variant(self.model)
+        });
         let mut reasoning_by_anchor_index: HashMap<usize, String> = HashMap::new();
 
         // Collect reasoning text for all turns (including historical ones).

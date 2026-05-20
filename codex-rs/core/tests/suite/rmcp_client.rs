@@ -509,12 +509,14 @@ async fn stdio_image_completions_round_trip() -> anyhow::Result<()> {
         })
         .cloned()
         .expect("tool message present");
+    // big-pickle is a DeepSeek-family model (text-only); images are replaced with
+    // a placeholder so the context is not poisoned by unsupported image_url content.
     assert_eq!(
         tool_msg,
         json!({
             "role": "tool",
             "tool_call_id": call_id,
-            "content": [{"type": "image_url", "image_url": {"url": OPENAI_PNG}}]
+            "content": [{"type": "text", "text": "[Image: not supported by this model]"}]
         })
     );
 

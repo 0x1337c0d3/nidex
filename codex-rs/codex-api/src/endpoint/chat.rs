@@ -81,6 +81,7 @@ impl<T: HttpTransport, A: AuthProvider> ChatClient<T, A> {
             session_source,
             supported_message_roles,
             None,
+            None,
         )
         .await
     }
@@ -93,6 +94,7 @@ impl<T: HttpTransport, A: AuthProvider> ChatClient<T, A> {
         session_source: Option<SessionSource>,
         supported_message_roles: Option<Vec<String>>,
         reasoning_field_name: Option<&str>,
+        image_url_supported: Option<bool>,
     ) -> Result<ResponseStream, ApiError> {
         use crate::requests::ChatRequestBuilder;
 
@@ -105,6 +107,9 @@ impl<T: HttpTransport, A: AuthProvider> ChatClient<T, A> {
 
         if let Some(roles) = supported_message_roles.clone() {
             builder = builder.supported_message_roles(roles);
+        }
+        if let Some(supported) = image_url_supported {
+            builder = builder.image_url_supported(supported);
         }
 
         let request = builder.build(self.streaming.provider())?;

@@ -36,6 +36,7 @@ use codex_protocol::ThreadId;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::config_types::WebSearchMode;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::openai_models::InputModality;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use codex_protocol::protocol::SessionSource;
@@ -573,6 +574,11 @@ impl ModelClientSession {
         let client = ApiChatClient::new(transport, api_provider, api_auth)
             .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
 
+        let image_url_supported = self
+            .state
+            .model_info
+            .input_modalities
+            .contains(&InputModality::Image);
         let stream_result = client
             .stream_prompt_with_roles_and_reasoning(
                 &self.state.model_info.slug,
@@ -581,6 +587,7 @@ impl ModelClientSession {
                 Some(session_source.clone()),
                 Some(self.state.model_info.supported_message_roles.clone()),
                 self.state.model_info.reasoning_field_name.as_deref(),
+                Some(image_url_supported),
             )
             .await;
 

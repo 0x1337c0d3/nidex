@@ -48,7 +48,8 @@
         "tool",
         "developer"
       ],
-      "reasoning_field_name": "reasoning_content"
+      "reasoning_field_name": "reasoning_content",
+      "input_modalities": ["text"]
     }
   ]
 }
