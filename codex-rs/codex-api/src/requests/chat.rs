@@ -99,6 +99,11 @@ impl<'a> ChatRequestBuilder<'a> {
         });
 
         let input = self.input;
+        let image_url_supported = !is_deepseek_variant(&provider.name)
+            && !self
+                .model_slug
+                .map_or(false, |slug| is_deepseek_variant(slug))
+            && !is_deepseek_variant(self.model);
         let mut reasoning_by_anchor_index: HashMap<usize, String> = HashMap::new();
 
         // Collect reasoning text for all turns (including historical ones).
@@ -173,10 +178,16 @@ impl<'a> ChatRequestBuilder<'a> {
                                 items.push(json!({"type":"text","text": t}));
                             }
                             ContentItem::InputImage { image_url } => {
-                                saw_image = true;
-                                items.push(
-                                    json!({"type":"image_url","image_url": {"url": image_url}}),
-                                );
+                                if image_url_supported {
+                                    saw_image = true;
+                                    items.push(
+                                        json!({"type":"image_url","image_url": {"url": image_url}}),
+                                    );
+                                } else {
+                                    let placeholder = "[Image: not supported by this model]";
+                                    text.push_str(placeholder);
+                                    items.push(json!({"type":"text","text": placeholder}));
+                                }
                             }
                         }
                     }
@@ -260,7 +271,11 @@ impl<'a> ChatRequestBuilder<'a> {
                                     json!({"type":"text","text": text})
                                 }
                                 FunctionCallOutputContentItem::InputImage { image_url } => {
-                                    json!({"type":"image_url","image_url": {"url": image_url}})
+                                    if image_url_supported {
+                                        json!({"type":"image_url","image_url": {"url": image_url}})
+                                    } else {
+                                        json!({"type":"text","text":"[Image: not supported by this model]"})
+                                    }
                                 }
                             })
                             .collect();
@@ -779,5 +794,42 @@ mod tests {
             "DeepSeek model slug must trigger reasoning_content inclusion (got: {})", assistant_msg
         );
         assert_eq!(assistant_msg["reasoning_content"], "");
+    }
+
+    #[test]
+    fn deepseek_strips_image_url_to_placeholder_text() {
+        // Regression: DeepSeek rejects `image_url` content type; images must be replaced
+        // with a text placeholder so the context is not permanently corrupted.
+        let prompt_input = vec![
+            ResponseItem::Message {
+                id: None,
+                role: "user".to_string(),
+                content: vec![
+                    ContentItem::InputText { text: "describe this".to_string() },
+                    ContentItem::InputImage { image_url: "data:image/png;base64,abc123".to_string() },
+                ],
+                end_turn: None,
+                phase: None,
+            },
+        ];
+
+        let mut deepseek_provider = provider();
+        deepseek_provider.name = "deepseek".to_string();
+
+        let request = ChatRequestBuilder::new("deepseek-chat", "sys", &prompt_input, &[])
+            .build(&deepseek_provider)
+            .unwrap();
+        let messages = request.body["messages"].as_array().unwrap();
+
+        let user_msg = messages.iter().find(|m| m["role"] == "user").unwrap();
+        let content = user_msg["content"].as_str().expect("content should be plain text");
+        assert!(
+            !content.contains("image_url"),
+            "image_url must not appear in DeepSeek request (got: {content})"
+        );
+        assert!(
+            content.contains("[Image: not supported by this model]"),
+            "placeholder must appear in content (got: {content})"
+        );
     }
 }
