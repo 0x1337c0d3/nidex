@@ -1486,6 +1486,48 @@ impl App {
                 ));
                 tui.frame_requester().schedule_frame();
             }
+            AppEvent::CopyTranscript => {
+                const TRANSCRIPT_WIDTH: u16 = 120;
+                let active_lines = self
+                    .chat_widget
+                    .active_cell_transcript_lines(TRANSCRIPT_WIDTH)
+                    .unwrap_or_default();
+                let text: String = self
+                    .transcript_cells
+                    .iter()
+                    .flat_map(|cell| cell.transcript_lines(TRANSCRIPT_WIDTH))
+                    .chain(active_lines)
+                    .map(|line| {
+                        line.spans
+                            .iter()
+                            .map(|s| s.content.as_ref())
+                            .collect::<String>()
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                #[cfg(not(target_os = "android"))]
+                match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(text)) {
+                    Ok(()) => {
+                        self.chat_widget.add_info_message(
+                            "Transcript copied to clipboard.".to_string(),
+                            None,
+                        );
+                    }
+                    Err(e) => {
+                        self.chat_widget
+                            .add_error_message(format!("Failed to copy to clipboard: {e}"));
+                    }
+                }
+                #[cfg(target_os = "android")]
+                {
+                    let _ = text;
+                    self.chat_widget.add_error_message(
+                        "Clipboard is not supported on Android.".to_string(),
+                    );
+                }
+                tui.frame_requester().schedule_frame();
+            }
             AppEvent::OpenAppLink {
                 title,
                 description,

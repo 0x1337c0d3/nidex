@@ -121,6 +121,9 @@ pub(crate) enum AppEvent {
 
     InsertHistoryCell(Box<dyn HistoryCell>),
 
+    /// Copy the full conversation transcript to the system clipboard.
+    CopyTranscript,
+
     StartCommitAnimation,
     StopCommitAnimation,
     CommitTick,

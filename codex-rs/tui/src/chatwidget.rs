@@ -2894,6 +2894,9 @@ impl ChatWidget {
             SlashCommand::Status => {
                 self.add_status_output();
             }
+            SlashCommand::Copy => {
+                self.app_event_tx.send(AppEvent::CopyTranscript);
+            }
             SlashCommand::Ps => {
                 self.add_ps_output();
             }

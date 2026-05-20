@@ -33,6 +33,7 @@ pub enum SlashCommand {
     Diff,
     Mention,
     Status,
+    Copy,
     Mcp,
     Apps,
     Quit,
@@ -59,6 +60,7 @@ impl SlashCommand {
             SlashCommand::Mention => "mention a file",
             SlashCommand::Skills => "use skills to improve how Codex performs specific tasks",
             SlashCommand::Status => "show current session configuration and token usage",
+            SlashCommand::Copy => "copy the conversation transcript to clipboard",
             SlashCommand::Ps => "list background terminals",
             SlashCommand::Model => "choose what model and reasoning effort to use",
             SlashCommand::Plan => "switch to Plan mode",
@@ -110,6 +112,7 @@ impl SlashCommand {
             | SlashCommand::Mention
             | SlashCommand::Skills
             | SlashCommand::Status
+            | SlashCommand::Copy
             | SlashCommand::Ps
             | SlashCommand::Mcp
             | SlashCommand::Apps
