@@ -147,7 +147,7 @@ async fn send_track_skill_invocations(auth_manager: &AuthManager, job: TrackEven
         tracking,
         invocations,
     } = job;
-    let Some(auth) = auth_manager.auth() else {
+    let Some(auth): Option<crate::auth::CodexAuth> = auth_manager.auth() else {
         return;
     };
     let access_token = match auth.get_token() {

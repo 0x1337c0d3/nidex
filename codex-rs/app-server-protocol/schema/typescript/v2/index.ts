@@ -63,7 +63,6 @@ export type { ListMcpServerStatusParams } from "./ListMcpServerStatusParams";
 export type { ListMcpServerStatusResponse } from "./ListMcpServerStatusResponse";
 export type { LoginAccountParams } from "./LoginAccountParams";
 export type { LoginAccountResponse } from "./LoginAccountResponse";
-export type { LogoutAccountResponse } from "./LogoutAccountResponse";
 export type { McpAuthStatus } from "./McpAuthStatus";
 export type { McpServerOauthLoginCompletedNotification } from "./McpServerOauthLoginCompletedNotification";
 export type { McpServerOauthLoginParams } from "./McpServerOauthLoginParams";

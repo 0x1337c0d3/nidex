@@ -18,7 +18,6 @@ use codex_app_server_protocol::AppsListResponse;
 use codex_app_server_protocol::ArchiveConversationParams;
 use codex_app_server_protocol::ArchiveConversationResponse;
 use codex_app_server_protocol::AskForApproval;
-use codex_app_server_protocol::AuthMode;
 use codex_app_server_protocol::AuthStatusChangeNotification;
 use codex_app_server_protocol::CancelLoginAccountParams;
 use codex_app_server_protocol::CancelLoginAccountResponse;
@@ -57,7 +56,6 @@ use codex_app_server_protocol::ListMcpServerStatusResponse;
 use codex_app_server_protocol::LoginAccountParams;
 use codex_app_server_protocol::LoginApiKeyParams;
 use codex_app_server_protocol::LoginApiKeyResponse;
-use codex_app_server_protocol::LogoutAccountResponse;
 use codex_app_server_protocol::McpServerOauthLoginCompletedNotification;
 use codex_app_server_protocol::McpServerOauthLoginParams;
 use codex_app_server_protocol::McpServerOauthLoginResponse;
@@ -549,12 +547,6 @@ impl CodexMessageProcessor {
             ClientRequest::LoginAccount { request_id, params } => {
                 self.login_v2(request_id, params).await;
             }
-            ClientRequest::LogoutAccount {
-                request_id,
-                params: _,
-            } => {
-                self.logout_v2(request_id).await;
-            }
             ClientRequest::CancelLoginAccount { request_id, params } => {
                 self.cancel_login_v2(request_id, params).await;
             }
@@ -745,64 +737,6 @@ impl CodexMessageProcessor {
                     message: format!("invalid login id: {login_id}"),
                     data: None,
                 };
-                self.outgoing.send_error(request_id, error).await;
-            }
-        }
-    }
-
-    async fn logout_common(&mut self) -> std::result::Result<Option<AuthMode>, JSONRPCErrorError> {
-        if let Err(err) = self.auth_manager.logout() {
-            return Err(JSONRPCErrorError {
-                code: INTERNAL_ERROR_CODE,
-                message: format!("logout failed: {err}"),
-                data: None,
-            });
-        }
-
-        // Reflect the current auth method after logout (likely None).
-        Ok(self
-            .auth_manager
-            .auth_cached()
-            .as_ref()
-            .map(CodexAuth::api_auth_mode))
-    }
-
-    #[allow(dead_code)]
-    async fn logout_v1(&mut self, request_id: RequestId) {
-        match self.logout_common().await {
-            Ok(current_auth_method) => {
-                self.outgoing
-                    .send_response(request_id, LogoutAccountResponse {})
-                    .await;
-
-                let payload = AuthStatusChangeNotification {
-                    auth_method: current_auth_method,
-                };
-                self.outgoing
-                    .send_server_notification(ServerNotification::AuthStatusChange(payload))
-                    .await;
-            }
-            Err(error) => {
-                self.outgoing.send_error(request_id, error).await;
-            }
-        }
-    }
-
-    async fn logout_v2(&mut self, request_id: RequestId) {
-        match self.logout_common().await {
-            Ok(current_auth_method) => {
-                self.outgoing
-                    .send_response(request_id, LogoutAccountResponse {})
-                    .await;
-
-                let payload_v2 = AccountUpdatedNotification {
-                    auth_mode: current_auth_method,
-                };
-                self.outgoing
-                    .send_server_notification(ServerNotification::AccountUpdated(payload_v2))
-                    .await;
-            }
-            Err(error) => {
                 self.outgoing.send_error(request_id, error).await;
             }
         }

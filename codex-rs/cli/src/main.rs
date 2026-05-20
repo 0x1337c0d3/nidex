@@ -10,7 +10,6 @@ use codex_cli::WindowsCommand;
 use codex_cli::login::read_api_key_from_stdin;
 use codex_cli::login::run_login_status;
 use codex_cli::login::run_login_with_api_key;
-use codex_cli::login::run_logout;
 use codex_common::CliConfigOverrides;
 use codex_exec::Cli as ExecCli;
 use codex_exec::Command as ExecCommand;
@@ -80,9 +79,6 @@ enum Subcommand {
 
     /// Manage login.
     Login(LoginCommand),
-
-    /// Remove stored authentication credentials.
-    Logout(LogoutCommand),
 
     /// [experimental] Run Codex as an MCP server and manage MCP servers.
     Mcp(McpCli),
@@ -227,12 +223,6 @@ struct LoginCommand {
 enum LoginSubcommand {
     /// Show login status.
     Status,
-}
-
-#[derive(Debug, Parser)]
-struct LogoutCommand {
-    #[clap(skip)]
-    config_overrides: CliConfigOverrides,
 }
 
 #[derive(Debug, Parser)]
@@ -597,13 +587,6 @@ async fn cli_main(codex_linux_sandbox_exe: Option<PathBuf>) -> anyhow::Result<()
                     }
                 }
             }
-        }
-        Some(Subcommand::Logout(mut logout_cli)) => {
-            prepend_config_flags(
-                &mut logout_cli.config_overrides,
-                root_config_overrides.clone(),
-            );
-            run_logout(logout_cli.config_overrides).await;
         }
         Some(Subcommand::Completion(completion_cli)) => {
             print_completion(completion_cli);

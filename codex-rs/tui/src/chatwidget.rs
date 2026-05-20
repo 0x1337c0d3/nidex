@@ -2865,15 +2865,6 @@ impl ChatWidget {
             SlashCommand::Quit | SlashCommand::Exit => {
                 self.request_quit_without_confirmation();
             }
-            SlashCommand::Logout => {
-                if let Err(e) = codex_core::auth::logout(
-                    &self.config.codex_home,
-                    self.config.cli_auth_credentials_store_mode,
-                ) {
-                    tracing::error!("failed to logout: {e}");
-                }
-                self.request_quit_without_confirmation();
-            }
             // SlashCommand::Undo => {
             //     self.app_event_tx.send(AppEvent::CodexOp(Op::Undo));
             // }
@@ -3583,7 +3574,7 @@ impl ChatWidget {
 
     /// Request a shutdown-first quit.
     ///
-    /// This is used for explicit quit commands (`/quit`, `/exit`, `/logout`) and for
+    /// This is used for explicit quit commands (`/quit`, `/exit`) and for
     /// the double-press Ctrl+C/Ctrl+D quit shortcut.
     fn request_quit_without_confirmation(&self) {
         self.app_event_tx

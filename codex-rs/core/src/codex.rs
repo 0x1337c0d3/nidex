@@ -801,7 +801,7 @@ impl Session {
             rollout_recorder_and_state_db,
             (history_log_id, history_entry_count),
             (auth, mcp_servers, auth_statuses),
-        ) = tokio::join!(rollout_fut, history_meta_fut, auth_and_mcp_fut);
+        ): (_, (_, _), (_, _, _)) = tokio::join!(rollout_fut, history_meta_fut, auth_and_mcp_fut);
 
         let (rollout_recorder, state_db_ctx) = rollout_recorder_and_state_db.map_err(|e| {
             error!("failed to initialize rollout recorder: {e:#}");

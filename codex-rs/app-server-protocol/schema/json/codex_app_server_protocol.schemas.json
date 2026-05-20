@@ -1467,29 +1467,6 @@
           "type": "object"
         },
         {
-          "properties": {
-            "id": {
-              "$ref": "#/definitions/RequestId"
-            },
-            "method": {
-              "enum": [
-                "account/logout"
-              ],
-              "title": "Account/logoutRequestMethod",
-              "type": "string"
-            },
-            "params": {
-              "type": "null"
-            }
-          },
-          "required": [
-            "id",
-            "method"
-          ],
-          "title": "Account/logoutRequest",
-          "type": "object"
-        },
-        {
           "description": "Execute a command (argv vector) under the server's sandbox.",
           "properties": {
             "id": {
@@ -12457,11 +12434,6 @@
           }
         ],
         "title": "LoginAccountResponse"
-      },
-      "LogoutAccountResponse": {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "title": "LogoutAccountResponse",
-        "type": "object"
       },
       "McpAuthStatus": {
         "enum": [

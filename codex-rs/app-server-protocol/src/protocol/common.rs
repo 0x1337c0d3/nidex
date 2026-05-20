@@ -328,10 +328,6 @@ client_request_definitions! {
         response: v2::CancelLoginAccountResponse,
     },
 
-    LogoutAccount => "account/logout" {
-        params: #[ts(type = "undefined")] #[serde(skip_serializing_if = "Option::is_none")] Option<()>,
-        response: v2::LogoutAccountResponse,
-    },
 
     /// Execute a command (argv vector) under the server's sandbox.
     OneOffCommandExec => "command/exec" {
@@ -936,22 +932,6 @@ mod tests {
                     "type": "apiKey",
                     "apiKey": "secret"
                 }
-            }),
-            serde_json::to_value(&request)?,
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn serialize_account_logout() -> Result<()> {
-        let request = ClientRequest::LogoutAccount {
-            request_id: RequestId::Integer(4),
-            params: None,
-        };
-        assert_eq!(
-            json!({
-                "method": "account/logout",
-                "id": 4,
             }),
             serde_json::to_value(&request)?,
         );

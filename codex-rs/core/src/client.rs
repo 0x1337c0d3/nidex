@@ -52,7 +52,7 @@ use tokio_tungstenite::tungstenite::Error;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::warn;
 
-use crate::AuthManager;
+use crate::auth::AuthManager;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::client_common::ResponseStream;
@@ -261,6 +261,7 @@ impl ModelClient {
             Some(manager) => manager.auth(),
             None => None,
         };
+        let auth: Option<crate::auth::CodexAuth> = auth;
         let api_provider = self
             .state
             .provider
@@ -561,6 +562,7 @@ impl ModelClientSession {
             Some(manager) => manager.auth(),
             None => None,
         };
+        let auth: Option<crate::auth::CodexAuth> = auth;
         let api_provider = self
             .state
             .provider
@@ -608,6 +610,7 @@ impl ModelClientSession {
             Some(manager) => manager.auth(),
             None => None,
         };
+        let auth: Option<crate::auth::CodexAuth> = auth;
         let api_provider = self
             .state
             .provider
@@ -643,6 +646,7 @@ impl ModelClientSession {
             Some(manager) => manager.auth(),
             None => None,
         };
+        let auth: Option<crate::auth::CodexAuth> = auth;
         let api_provider = self
             .state
             .provider

@@ -72,7 +72,6 @@ pub(super) fn delete_file_if_exists(codex_home: &Path) -> std::io::Result<bool> 
 pub(super) trait AuthStorageBackend: Debug + Send + Sync {
     fn load(&self) -> std::io::Result<Option<AuthDotJson>>;
     fn save(&self, auth: &AuthDotJson) -> std::io::Result<()>;
-    fn delete(&self) -> std::io::Result<bool>;
 }
 
 #[derive(Clone, Debug)]
@@ -125,10 +124,6 @@ impl AuthStorageBackend for FileAuthStorage {
         file.write_all(json_data.as_bytes())?;
         file.flush()?;
         Ok(())
-    }
-
-    fn delete(&self) -> std::io::Result<bool> {
-        delete_file_if_exists(&self.codex_home)
     }
 }
 
@@ -208,18 +203,6 @@ impl AuthStorageBackend for KeyringAuthStorage {
         }
         Ok(())
     }
-
-    fn delete(&self) -> std::io::Result<bool> {
-        let key = compute_store_key(&self.codex_home)?;
-        let keyring_removed = self
-            .keyring_store
-            .delete(KEYRING_SERVICE, &key)
-            .map_err(|err| {
-                std::io::Error::other(format!("failed to delete auth from keyring: {err}"))
-            })?;
-        let file_removed = delete_file_if_exists(&self.codex_home)?;
-        Ok(keyring_removed || file_removed)
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -257,11 +240,6 @@ impl AuthStorageBackend for AutoAuthStorage {
                 self.file_storage.save(auth)
             }
         }
-    }
-
-    fn delete(&self) -> std::io::Result<bool> {
-        // Keyring storage will delete from disk as well
-        self.keyring_storage.delete()
     }
 }
 
@@ -301,10 +279,6 @@ impl AuthStorageBackend for EphemeralAuthStorage {
             store.insert(key, auth.clone());
             Ok(())
         })
-    }
-
-    fn delete(&self) -> std::io::Result<bool> {
-        self.with_store(|store, key| Ok(store.remove(&key).is_some()))
     }
 }
 
@@ -387,65 +361,6 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn file_storage_delete_removes_auth_file() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        let auth_dot_json = AuthDotJson {
-            auth_mode: Some(AuthMode::ApiKey),
-            openai_api_key: Some("sk-test-key".to_string()),
-            tokens: None,
-            last_refresh: None,
-        };
-        let storage = create_auth_storage(dir.path().to_path_buf(), AuthCredentialsStoreMode::File);
-        storage.save(&auth_dot_json)?;
-        assert!(dir.path().join("auth.json").exists());
-        let storage = FileAuthStorage::new(dir.path().to_path_buf());
-        let removed = storage.delete()?;
-        assert!(removed);
-        assert!(!dir.path().join("auth.json").exists());
-        Ok(())
-    }
-
-    #[test]
-    fn ephemeral_storage_save_load_delete_is_in_memory_only() -> anyhow::Result<()> {
-        let dir = tempdir()?;
-        let storage = create_auth_storage(
-            dir.path().to_path_buf(),
-            AuthCredentialsStoreMode::Ephemeral,
-        );
-        let auth_dot_json = AuthDotJson {
-            auth_mode: Some(AuthMode::ApiKey),
-            openai_api_key: Some("sk-ephemeral".to_string()),
-            tokens: None,
-            last_refresh: Some(Utc::now()),
-        };
-
-        storage.save(&auth_dot_json)?;
-        let loaded = storage.load()?;
-        assert_eq!(Some(auth_dot_json), loaded);
-
-        let removed = storage.delete()?;
-        assert!(removed);
-        let loaded = storage.load()?;
-        assert_eq!(None, loaded);
-        assert!(!get_auth_file(dir.path()).exists());
-        Ok(())
-    }
-
-    fn seed_keyring_and_fallback_auth_file_for_delete<F>(
-        mock_keyring: &MockKeyringStore,
-        codex_home: &Path,
-        compute_key: F,
-    ) -> anyhow::Result<(String, PathBuf)>
-    where
-        F: FnOnce() -> std::io::Result<String>,
-    {
-        let key = compute_key()?;
-        mock_keyring.save(KEYRING_SERVICE, &key, "{}")?;
-        let auth_file = get_auth_file(codex_home);
-        std::fs::write(&auth_file, "stale")?;
-        Ok((key, auth_file))
-    }
 
     fn seed_keyring_with_auth<F>(
         mock_keyring: &MockKeyringStore,
@@ -589,34 +504,6 @@ mod tests {
     }
 
     #[test]
-    fn keyring_auth_storage_delete_removes_keyring_and_file() -> anyhow::Result<()> {
-        let codex_home = tempdir()?;
-        let mock_keyring = MockKeyringStore::default();
-        let storage = KeyringAuthStorage::new(
-            codex_home.path().to_path_buf(),
-            Arc::new(mock_keyring.clone()),
-        );
-        let (key, auth_file) = seed_keyring_and_fallback_auth_file_for_delete(
-            &mock_keyring,
-            codex_home.path(),
-            || compute_store_key(codex_home.path()),
-        )?;
-
-        let removed = storage.delete()?;
-
-        assert!(removed, "delete should report removal");
-        assert!(
-            !mock_keyring.contains(&key),
-            "keyring entry should be removed"
-        );
-        assert!(
-            !auth_file.exists(),
-            "fallback auth.json should be removed after keyring delete"
-        );
-        Ok(())
-    }
-
-    #[test]
     fn auto_auth_storage_load_prefers_keyring_value() -> anyhow::Result<()> {
         let codex_home = tempdir()?;
         let mock_keyring = MockKeyringStore::default();
@@ -728,31 +615,4 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn auto_auth_storage_delete_removes_keyring_and_file() -> anyhow::Result<()> {
-        let codex_home = tempdir()?;
-        let mock_keyring = MockKeyringStore::default();
-        let storage = AutoAuthStorage::new(
-            codex_home.path().to_path_buf(),
-            Arc::new(mock_keyring.clone()),
-        );
-        let (key, auth_file) = seed_keyring_and_fallback_auth_file_for_delete(
-            &mock_keyring,
-            codex_home.path(),
-            || compute_store_key(codex_home.path()),
-        )?;
-
-        let removed = storage.delete()?;
-
-        assert!(removed, "delete should report removal");
-        assert!(
-            !mock_keyring.contains(&key),
-            "keyring entry should be removed"
-        );
-        assert!(
-            !auth_file.exists(),
-            "fallback auth.json should be removed after delete"
-        );
-        Ok(())
-    }
 }

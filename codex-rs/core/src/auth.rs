@@ -123,15 +123,6 @@ pub fn read_codex_api_key_from_env() -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-/// Delete the auth.json file inside `codex_home` if it exists. Returns `Ok(true)`
-/// if a file was removed, `Ok(false)` if no auth file was present.
-pub fn logout(
-    codex_home: &Path,
-    auth_credentials_store_mode: AuthCredentialsStoreMode,
-) -> std::io::Result<bool> {
-    let storage = create_auth_storage(codex_home.to_path_buf(), auth_credentials_store_mode);
-    storage.delete()
-}
 
 /// Writes an `auth.json` that contains only the API key.
 pub fn login_with_api_key(
@@ -177,17 +168,6 @@ pub fn enforce_login_restrictions(_config: &Config) -> std::io::Result<()> {
 }
 
 
-fn logout_all_stores(
-    codex_home: &Path,
-    auth_credentials_store_mode: AuthCredentialsStoreMode,
-) -> std::io::Result<bool> {
-    if auth_credentials_store_mode == AuthCredentialsStoreMode::Ephemeral {
-        return logout(codex_home, AuthCredentialsStoreMode::Ephemeral);
-    }
-    let removed_ephemeral = logout(codex_home, AuthCredentialsStoreMode::Ephemeral)?;
-    let removed_managed = logout(codex_home, auth_credentials_store_mode)?;
-    Ok(removed_ephemeral || removed_managed)
-}
 
 fn load_auth(
     codex_home: &Path,
@@ -410,16 +390,6 @@ impl AuthManager {
 
 
 
-    /// Log out by deleting the on‑disk auth.json (if present). Returns Ok(true)
-    /// if a file was removed, Ok(false) if no auth file existed. On success,
-    /// reloads the in‑memory auth cache so callers immediately observe the
-    /// unauthenticated state.
-    pub fn logout(&self) -> std::io::Result<bool> {
-        let removed = logout_all_stores(&self.codex_home, self.auth_credentials_store_mode)?;
-        // Always reload to clear any cached auth (even if file absent).
-        self.reload();
-        Ok(removed)
-    }
 
     pub fn get_auth_mode(&self) -> Option<ApiAuthMode> {
         self.auth_cached().as_ref().map(CodexAuth::api_auth_mode)
@@ -495,23 +465,4 @@ mod tests {
         assert_eq!(auth.api_auth_mode(), ApiAuthMode::ApiKey);
         assert_eq!(auth.api_key(), Some("sk-test-key"));
     }
-
-    #[test]
-    fn logout_removes_auth_file() -> Result<(), std::io::Error> {
-        let dir = tempdir()?;
-        let auth_dot_json = AuthDotJson {
-            auth_mode: Some(ApiAuthMode::ApiKey),
-            openai_api_key: Some("sk-test-key".to_string()),
-            tokens: None,
-            last_refresh: None,
-        };
-        super::save_auth(dir.path(), &auth_dot_json, AuthCredentialsStoreMode::File)?;
-        let auth_file = get_auth_file(dir.path());
-        assert!(auth_file.exists());
-        assert!(logout(dir.path(), AuthCredentialsStoreMode::File)?);
-        assert!(!auth_file.exists());
-        Ok(())
-    }
-
-
 }

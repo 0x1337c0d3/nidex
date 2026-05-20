@@ -538,11 +538,6 @@ impl McpProcess {
         self.send_request("config/batchWrite", params).await
     }
 
-    /// Send an `account/logout` JSON-RPC request.
-    pub async fn send_logout_account_request(&mut self) -> anyhow::Result<i64> {
-        self.send_request("account/logout", None).await
-    }
-
     /// Send an `account/login/start` JSON-RPC request for API key login.
     pub async fn send_login_account_api_key_request(
         &mut self,

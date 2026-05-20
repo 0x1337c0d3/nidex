@@ -1,7 +1,6 @@
 use codex_common::CliConfigOverrides;
 use codex_core::CodexAuth;
 use codex_core::auth::login_with_api_key;
-use codex_core::auth::logout;
 use codex_core::config::Config;
 use std::io::IsTerminal;
 use std::io::Read;
@@ -80,24 +79,6 @@ pub async fn run_login_status(cli_config_overrides: CliConfigOverrides) -> ! {
     }
 }
 
-pub async fn run_logout(cli_config_overrides: CliConfigOverrides) -> ! {
-    let config = load_config_or_exit(cli_config_overrides).await;
-
-    match logout(&config.codex_home, config.cli_auth_credentials_store_mode) {
-        Ok(true) => {
-            eprintln!("Successfully logged out");
-            std::process::exit(0);
-        }
-        Ok(false) => {
-            eprintln!("Not logged in");
-            std::process::exit(0);
-        }
-        Err(e) => {
-            eprintln!("Error logging out: {e}");
-            std::process::exit(1);
-        }
-    }
-}
 
 async fn load_config_or_exit(cli_config_overrides: CliConfigOverrides) -> Config {
     let cli_overrides = match cli_config_overrides.parse_overrides() {

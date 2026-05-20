@@ -17,7 +17,6 @@ use codex_core::mcp::auth::McpOAuthLoginSupport;
 use codex_core::mcp::auth::compute_auth_statuses;
 use codex_core::mcp::auth::oauth_login_support;
 use codex_core::protocol::McpAuthStatus;
-use codex_rmcp_client::delete_oauth_tokens;
 use codex_rmcp_client::perform_oauth_login;
 
 /// Subcommands:
@@ -26,7 +25,6 @@ use codex_rmcp_client::perform_oauth_login;
 /// - `add`    — add a server launcher entry to `~/.codex/config.toml`
 /// - `remove` — delete a server entry
 /// - `login`  — authenticate with MCP server using OAuth
-/// - `logout` — remove OAuth credentials for MCP server
 #[derive(Debug, clap::Parser)]
 pub struct McpCli {
     #[clap(flatten)]
@@ -43,7 +41,6 @@ pub enum McpSubcommand {
     Add(AddArgs),
     Remove(RemoveArgs),
     Login(LoginArgs),
-    Logout(LogoutArgs),
 }
 
 #[derive(Debug, clap::Parser)]
@@ -142,12 +139,6 @@ pub struct LoginArgs {
     pub scopes: Vec<String>,
 }
 
-#[derive(Debug, clap::Parser)]
-pub struct LogoutArgs {
-    /// Name of the MCP server to deauthenticate.
-    pub name: String,
-}
-
 impl McpCli {
     pub async fn run(self) -> Result<()> {
         let McpCli {
@@ -170,9 +161,6 @@ impl McpCli {
             }
             McpSubcommand::Login(args) => {
                 run_login(&config_overrides, args).await?;
-            }
-            McpSubcommand::Logout(args) => {
-                run_logout(&config_overrides, args).await?;
             }
         }
 
@@ -361,35 +349,6 @@ async fn run_login(config_overrides: &CliConfigOverrides, login_args: LoginArgs)
     Ok(())
 }
 
-async fn run_logout(config_overrides: &CliConfigOverrides, logout_args: LogoutArgs) -> Result<()> {
-    let overrides = config_overrides
-        .parse_overrides()
-        .map_err(anyhow::Error::msg)?;
-    let config = Config::load_with_cli_overrides(overrides)
-        .await
-        .context("failed to load configuration")?;
-
-    let LogoutArgs { name } = logout_args;
-
-    let server = config
-        .mcp_servers
-        .get()
-        .get(&name)
-        .ok_or_else(|| anyhow!("No MCP server named '{name}' found in configuration."))?;
-
-    let url = match &server.transport {
-        McpServerTransportConfig::StreamableHttp { url, .. } => url.clone(),
-        _ => bail!("OAuth logout is only supported for streamable_http transports."),
-    };
-
-    match delete_oauth_tokens(&name, &url, config.mcp_oauth_credentials_store_mode) {
-        Ok(true) => println!("Removed OAuth credentials for '{name}'."),
-        Ok(false) => println!("No OAuth credentials stored for '{name}'."),
-        Err(err) => return Err(anyhow!("failed to delete OAuth credentials: {err}")),
-    }
-
-    Ok(())
-}
 
 async fn run_list(config_overrides: &CliConfigOverrides, list_args: ListArgs) -> Result<()> {
     let overrides = config_overrides
