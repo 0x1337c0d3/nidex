@@ -7,6 +7,7 @@ use codex_protocol::openai_models::ModelPreset;
 use codex_protocol::openai_models::ModelUpgrade;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::openai_models::ReasoningEffortPreset;
+use codex_protocol::openai_models::InputModality;
 use codex_protocol::openai_models::default_input_modalities;
 use core_test_support::load_default_config_for_test;
 use pretty_assertions::assert_eq;
@@ -90,7 +91,7 @@ fn builtin_big_pickle() -> ModelPreset {
         upgrade: None,
         show_in_picker: true,
         supported_in_api: true,
-        input_modalities: default_input_modalities(),
+        input_modalities: vec![InputModality::Text],
     }
 }
 
