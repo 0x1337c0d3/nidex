@@ -271,6 +271,12 @@
         "sandbox_mode": {
           "$ref": "#/definitions/SandboxMode"
         },
+        "tools_experimental_supported_tools": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "tools_view_image": {
           "type": "boolean"
         },
@@ -965,6 +971,14 @@
     "ToolsToml": {
       "additionalProperties": false,
       "properties": {
+        "experimental_supported_tools": {
+          "default": null,
+          "description": "Enable experimental built-in tools by name. Example: `experimental_supported_tools = [\"code_symbols\", \"code_query\", \"code_nav_init\"]`",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "view_image": {
           "default": null,
           "description": "Enable the `view_image` tool that lets the agent attach local images.",

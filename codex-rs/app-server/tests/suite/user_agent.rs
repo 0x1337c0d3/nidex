@@ -1,5 +1,6 @@
 use anyhow::Result;
 use app_test_support::DEFAULT_CLIENT_NAME;
+use app_test_support::DEFAULT_CLIENT_VERSION;
 use app_test_support::McpProcess;
 use app_test_support::to_response;
 use codex_app_server_protocol::GetUserAgentResponse;
@@ -27,12 +28,13 @@ async fn get_user_agent_returns_current_codex_user_agent() -> Result<()> {
 
     let os_info = os_info::get();
     let originator = DEFAULT_CLIENT_NAME;
+    let build_version = codex_core::default_client::CODEX_PKG_VERSION;
     let os_type = os_info.os_type();
     let os_version = os_info.version();
     let architecture = os_info.architecture().unwrap_or("unknown");
     let terminal_ua = codex_core::terminal::user_agent();
     let user_agent = format!(
-        "{originator}/0.0.0 ({os_type} {os_version}; {architecture}) {terminal_ua} ({DEFAULT_CLIENT_NAME}; 0.1.0)"
+        "{originator}/{build_version} ({os_type} {os_version}; {architecture}) {terminal_ua} ({DEFAULT_CLIENT_NAME}; {DEFAULT_CLIENT_VERSION})"
     );
 
     let received: GetUserAgentResponse = to_response(response)?;

@@ -316,6 +316,9 @@ pub struct Config {
     /// If set to `true`, used only the experimental unified exec tool.
     pub use_experimental_unified_exec_tool: bool,
 
+    /// Extra experimental tools enabled via config (merged with model-info defaults at build time).
+    pub experimental_supported_tools: Vec<String>,
+
     /// Settings for ghost snapshots (used for undo).
     pub ghost_snapshot: GhostSnapshotConfig,
 
@@ -998,6 +1001,11 @@ pub struct ToolsToml {
     /// Enable the `view_image` tool that lets the agent attach local images.
     #[serde(default)]
     pub view_image: Option<bool>,
+
+    /// Enable experimental built-in tools by name.
+    /// Example: `experimental_supported_tools = ["code_symbols", "code_query", "code_nav_init"]`
+    #[serde(default)]
+    pub experimental_supported_tools: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
@@ -1560,6 +1568,23 @@ impl Config {
             include_apply_patch_tool: include_apply_patch_tool_flag,
             web_search_mode,
             use_experimental_unified_exec_tool,
+            experimental_supported_tools: {
+                let mut tools: Vec<String> = cfg
+                    .tools
+                    .as_ref()
+                    .and_then(|t| t.experimental_supported_tools.clone())
+                    .unwrap_or_default();
+                if let Some(profile_tools) =
+                    config_profile.tools_experimental_supported_tools.clone()
+                {
+                    for t in profile_tools {
+                        if !tools.contains(&t) {
+                            tools.push(t);
+                        }
+                    }
+                }
+                tools
+            },
             ghost_snapshot,
             features,
             suppress_unstable_features_warning: cfg
@@ -3733,6 +3758,7 @@ model_verbosity = "high"
                 include_apply_patch_tool: false,
                 web_search_mode: None,
                 use_experimental_unified_exec_tool: false,
+                experimental_supported_tools: vec![],
                 ghost_snapshot: GhostSnapshotConfig::default(),
                 features: Features::with_defaults(),
                 suppress_unstable_features_warning: false,
@@ -3815,6 +3841,7 @@ model_verbosity = "high"
             include_apply_patch_tool: false,
             web_search_mode: None,
             use_experimental_unified_exec_tool: false,
+            experimental_supported_tools: vec![],
             ghost_snapshot: GhostSnapshotConfig::default(),
             features: Features::with_defaults(),
             suppress_unstable_features_warning: false,
@@ -3912,6 +3939,7 @@ model_verbosity = "high"
             include_apply_patch_tool: false,
             web_search_mode: None,
             use_experimental_unified_exec_tool: false,
+            experimental_supported_tools: vec![],
             ghost_snapshot: GhostSnapshotConfig::default(),
             features: Features::with_defaults(),
             suppress_unstable_features_warning: false,
@@ -3995,6 +4023,7 @@ model_verbosity = "high"
             include_apply_patch_tool: false,
             web_search_mode: None,
             use_experimental_unified_exec_tool: false,
+            experimental_supported_tools: vec![],
             ghost_snapshot: GhostSnapshotConfig::default(),
             features: Features::with_defaults(),
             suppress_unstable_features_warning: false,

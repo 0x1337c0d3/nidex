@@ -240,6 +240,8 @@ pub struct CodexSpawnOk {
 pub(crate) const INITIAL_SUBMIT_ID: &str = "";
 pub(crate) const SUBMISSION_CHANNEL_CAPACITY: usize = 64;
 
+const CODE_NAV_PROMPT: &str = include_str!("../code_nav_prompt.md");
+
 impl Codex {
     /// Spawn a new [`Codex`] and initialize the session.
     #[allow(clippy::too_many_arguments)]
@@ -310,6 +312,19 @@ impl Codex {
                     .filter(|s| !s.is_empty())
             })
             .unwrap_or_else(|| model_info.get_model_instructions());
+
+        const CODE_NAV_TOOLS: &[&str] = &["code_nav_init", "code_symbols", "code_query"];
+        let base_instructions =
+            if config
+                .experimental_supported_tools
+                .iter()
+                .any(|t| CODE_NAV_TOOLS.contains(&t.as_str()))
+            {
+                format!("{base_instructions}\n\n{CODE_NAV_PROMPT}")
+            } else {
+                base_instructions
+            };
+
         tracing::debug!(
             "Resolved base_instructions: {} chars, starts_with={:?}",
             base_instructions.len(),
@@ -380,6 +395,8 @@ impl Codex {
 
         // Generate a unique ID for the lifetime of this Codex session.
         let session_source_clone = session_configuration.session_source.clone();
+        let warmup_session_source = session_configuration.session_source.clone();
+        let warmup_cwd = config.cwd.clone();
         let (agent_status_tx, agent_status_rx) = watch::channel(AgentStatus::PendingInit);
 
         let session_init_span = info_span!("session_init");
@@ -409,6 +426,22 @@ impl Codex {
         tokio::spawn(
             submission_loop(Arc::clone(&session), config, rx_sub).instrument(session_loop_span),
         );
+
+        // Warm the code-nav index in the background for top-level sessions.
+        // Sub-agents and one-off exec sessions are excluded to avoid redundant work.
+        if !matches!(
+            warmup_session_source,
+            SessionSource::SubAgent(_) | SessionSource::Exec
+        ) {
+            tokio::spawn(async move {
+                if let Err(err) =
+                    codex_code_nav::NavIndex::warm(&warmup_cwd, None).await
+                {
+                    tracing::debug!("code-nav background warm failed: {err:#}");
+                }
+            });
+        }
+
         let codex = Codex {
             next_id: AtomicU64::new(0),
             tx_sub,
@@ -680,6 +713,7 @@ impl Session {
             model_info: &model_info,
             features: &per_turn_config.features,
             web_search_mode: per_turn_config.web_search_mode,
+            extra_experimental_tools: &per_turn_config.experimental_supported_tools,
         });
 
         TurnContext {
@@ -3090,6 +3124,7 @@ async fn spawn_review_thread(
         model_info: &review_model_info,
         features: &review_features,
         web_search_mode: Some(review_web_search_mode),
+        extra_experimental_tools: &config.experimental_supported_tools,
     });
 
     let review_prompt = resolved.prompt.clone();

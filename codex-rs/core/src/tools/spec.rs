@@ -38,6 +38,7 @@ pub(crate) struct ToolsConfigParams<'a> {
     pub(crate) model_info: &'a ModelInfo,
     pub(crate) features: &'a Features,
     pub(crate) web_search_mode: Option<WebSearchMode>,
+    pub(crate) extra_experimental_tools: &'a [String],
 }
 
 impl ToolsConfig {
@@ -46,6 +47,7 @@ impl ToolsConfig {
             model_info,
             features,
             web_search_mode,
+            extra_experimental_tools,
         } = params;
         let include_apply_patch_tool = features.enabled(Feature::ApplyPatchFreeform);
         let include_collab_tools = features.enabled(Feature::Collab);
@@ -84,7 +86,15 @@ impl ToolsConfig {
             collab_tools: include_collab_tools,
             collaboration_modes_tools: include_collaboration_modes_tools,
             request_rule_enabled,
-            experimental_supported_tools: model_info.experimental_supported_tools.clone(),
+            experimental_supported_tools: {
+                let mut tools = model_info.experimental_supported_tools.clone();
+                for t in extra_experimental_tools.iter() {
+                    if !tools.contains(t) {
+                        tools.push(t.clone());
+                    }
+                }
+                tools
+            },
         }
     }
 }
@@ -775,6 +785,120 @@ fn create_grep_files_tool() -> ToolSpec {
     })
 }
 
+fn create_code_nav_init_tool() -> ToolSpec {
+    let properties = BTreeMap::from([(
+        "reset".to_string(),
+        JsonSchema::Boolean {
+            description: Some(
+                "When true, deletes the existing index and rebuilds from scratch. Use this to \
+                 recover from a corrupted index or after a large refactor. Defaults to false."
+                    .to_string(),
+            ),
+        },
+    )]);
+    ToolSpec::Function(ResponsesApiTool {
+        name: "code_nav_init".to_string(),
+        description:
+            "Initialize or refresh the code-nav symbol index for the current working directory. \
+             Call this at the start of a session to warm the index before using code_symbols. \
+             Pass reset: true to rebuild the index from scratch if it is stale or corrupted."
+                .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec![]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_code_symbols_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "path".to_string(),
+            JsonSchema::String {
+                description: Some(
+                    "File or directory to scan for symbols. Defaults to the session's working \
+                     directory."
+                        .to_string(),
+                ),
+            },
+        ),
+        (
+            "lang".to_string(),
+            JsonSchema::String {
+                description: Some(
+                    "Language to search. Auto-detected from file extension when omitted. One of: \
+                     bash, c, cpp, go, javascript, python, rust, typescript."
+                        .to_string(),
+                ),
+            },
+        ),
+    ]);
+    ToolSpec::Function(ResponsesApiTool {
+        name: "code_symbols".to_string(),
+        description:
+            "List all top-level symbols (functions, structs, classes, enums, traits, etc.) \
+             defined in a file or directory using tree-sitter AST parsing. Returns each symbol's \
+             name, kind, file path, and line number as JSON."
+                .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec![]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_code_query_tool() -> ToolSpec {
+    let properties = BTreeMap::from([
+        (
+            "query".to_string(),
+            JsonSchema::String {
+                description: Some(
+                    "Tree-sitter S-expression query. Use named captures to label results, e.g. \
+                     `(function_item name: (identifier) @name)`."
+                        .to_string(),
+                ),
+            },
+        ),
+        (
+            "lang".to_string(),
+            JsonSchema::String {
+                description: Some(
+                    "Language grammar to use. One of: bash, c, cpp, go, javascript, python, \
+                     rust, typescript."
+                        .to_string(),
+                ),
+            },
+        ),
+        (
+            "path".to_string(),
+            JsonSchema::String {
+                description: Some(
+                    "File or directory to search. Defaults to the session's working directory."
+                        .to_string(),
+                ),
+            },
+        ),
+    ]);
+    ToolSpec::Function(ResponsesApiTool {
+        name: "code_query".to_string(),
+        description:
+            "Run an arbitrary tree-sitter S-expression query against source files, returning \
+             each capture's text, file path, and line numbers as JSON. Supports all tree-sitter \
+             query predicates. Returns up to 500 matches."
+                .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["query".to_string(), "lang".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
 fn create_read_file_tool() -> ToolSpec {
     let indentation_properties = BTreeMap::from([
         (
@@ -1263,6 +1387,9 @@ pub(crate) fn build_specs(
     dynamic_tools: &[DynamicToolSpec],
 ) -> ToolRegistryBuilder {
     use crate::tools::handlers::ApplyPatchHandler;
+    use crate::tools::handlers::CodeNavInitHandler;
+    use crate::tools::handlers::CodeQueryHandler;
+    use crate::tools::handlers::CodeSymbolsHandler;
     use crate::tools::handlers::CollabHandler;
     use crate::tools::handlers::DynamicToolHandler;
     use crate::tools::handlers::GrepFilesHandler;
@@ -1383,6 +1510,30 @@ pub(crate) fn build_specs(
         let test_sync_handler = Arc::new(TestSyncHandler);
         builder.push_spec_with_parallel_support(create_test_sync_tool(), true);
         builder.register_handler("test_sync_tool", test_sync_handler);
+    }
+
+    if config
+        .experimental_supported_tools
+        .contains(&"code_nav_init".to_string())
+    {
+        builder.push_spec_with_parallel_support(create_code_nav_init_tool(), false);
+        builder.register_handler("code_nav_init", Arc::new(CodeNavInitHandler));
+    }
+
+    if config
+        .experimental_supported_tools
+        .contains(&"code_symbols".to_string())
+    {
+        builder.push_spec_with_parallel_support(create_code_symbols_tool(), true);
+        builder.register_handler("code_symbols", Arc::new(CodeSymbolsHandler));
+    }
+
+    if config
+        .experimental_supported_tools
+        .contains(&"code_query".to_string())
+    {
+        builder.push_spec_with_parallel_support(create_code_query_tool(), true);
+        builder.register_handler("code_query", Arc::new(CodeQueryHandler));
     }
 
     match config.web_search_mode {
@@ -1563,6 +1714,7 @@ mod tests {
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Cached),
+            extra_experimental_tools: &[],
         });
         let (tools, _) = build_specs(&tools_config, None, &[]).build();
         assert_contains_tool_names(
@@ -1581,6 +1733,7 @@ mod tests {
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Cached),
+            extra_experimental_tools: &[],
         });
         let (tools, _) = build_specs(&tools_config, None, &[]).build();
         assert!(
@@ -1593,6 +1746,7 @@ mod tests {
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Cached),
+            extra_experimental_tools: &[],
         });
         let (tools, _) = build_specs(&tools_config, None, &[]).build();
         assert_contains_tool_names(&tools, &["request_user_input"]);
@@ -1610,6 +1764,7 @@ mod tests {
             model_info: &model_info,
             features,
             web_search_mode,
+            extra_experimental_tools: &[],
         });
         let (tools, _) = build_specs(&tools_config, Some(HashMap::new()), &[]).build();
         let tool_names = tools.iter().map(|t| t.spec.name()).collect::<Vec<_>>();
@@ -1626,6 +1781,7 @@ mod tests {
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Cached),
+            extra_experimental_tools: &[],
         });
         let (tools, _) = build_specs(&tools_config, None, &[]).build();
 
@@ -1648,6 +1804,7 @@ mod tests {
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Live),
+            extra_experimental_tools: &[],
         });
         let (tools, _) = build_specs(&tools_config, None, &[]).build();
 
@@ -1693,6 +1850,7 @@ mod tests {
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Live),
+            extra_experimental_tools: &[],
         });
         let (tools, _) = build_specs(&tools_config, Some(HashMap::new()), &[]).build();
 
@@ -1715,6 +1873,7 @@ mod tests {
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Cached),
+            extra_experimental_tools: &[],
         });
         let (tools, _) = build_specs(&tools_config, None, &[]).build();
 
@@ -1734,6 +1893,7 @@ mod tests {
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Cached),
+            extra_experimental_tools: &[],
         });
         let (tools, _) = build_specs(&tools_config, None, &[]).build();
 
@@ -1765,6 +1925,7 @@ mod tests {
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Live),
+            extra_experimental_tools: &[],
         });
         let (tools, _) = build_specs(
             &tools_config,
@@ -1850,6 +2011,7 @@ mod tests {
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Cached),
+            extra_experimental_tools: &[],
         });
 
         // Intentionally construct a map with keys that would sort alphabetically.
@@ -1894,6 +2056,7 @@ mod tests {
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Cached),
+            extra_experimental_tools: &[],
         });
 
         let (tools, _) = build_specs(
@@ -1946,6 +2109,7 @@ mod tests {
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Cached),
+            extra_experimental_tools: &[],
         });
 
         let (tools, _) = build_specs(
@@ -1995,6 +2159,7 @@ mod tests {
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Cached),
+            extra_experimental_tools: &[],
         });
 
         let (tools, _) = build_specs(
@@ -2046,6 +2211,7 @@ mod tests {
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Cached),
+            extra_experimental_tools: &[],
         });
 
         let (tools, _) = build_specs(
@@ -2155,6 +2321,7 @@ Examples of valid command strings:
             model_info: &model_info,
             features: &features,
             web_search_mode: Some(WebSearchMode::Cached),
+            extra_experimental_tools: &[],
         });
         let (tools, _) = build_specs(
             &tools_config,

@@ -72,6 +72,7 @@ pub struct McpProcess {
 }
 
 pub const DEFAULT_CLIENT_NAME: &str = "codex-app-server-tests";
+pub const DEFAULT_CLIENT_VERSION: &str = "0.1.0";
 
 impl McpProcess {
     pub async fn new(codex_home: &Path) -> anyhow::Result<Self> {
@@ -148,7 +149,7 @@ impl McpProcess {
             .initialize_with_client_info(ClientInfo {
                 name: DEFAULT_CLIENT_NAME.to_string(),
                 title: None,
-                version: "0.1.0".to_string(),
+                version: DEFAULT_CLIENT_VERSION.to_string(),
             })
             .await?;
         let JSONRPCMessage::Response(_) = initialized else {

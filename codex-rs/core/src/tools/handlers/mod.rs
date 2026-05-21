@@ -1,5 +1,8 @@
 pub mod apply_patch;
 pub(crate) mod collab;
+mod code_nav_init;
+mod code_query;
+mod code_symbols;
 mod dynamic;
 mod grep_files;
 mod list_dir;
@@ -18,6 +21,9 @@ use serde::Deserialize;
 
 use crate::function_tool::FunctionCallError;
 pub use apply_patch::ApplyPatchHandler;
+pub use code_nav_init::CodeNavInitHandler;
+pub use code_query::CodeQueryHandler;
+pub use code_symbols::CodeSymbolsHandler;
 pub use collab::CollabHandler;
 pub use dynamic::DynamicToolHandler;
 pub use grep_files::GrepFilesHandler;
