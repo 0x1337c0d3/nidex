@@ -93,4 +93,5 @@ __pycache__/
 
 # AiDex
 .aidex/
+.codex-nav/
 
