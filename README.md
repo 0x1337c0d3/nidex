@@ -27,3 +27,46 @@ cargo build --release
 ## Docs
 
 This repository is licensed under the [Apache-2.0 License](LICENSE).
+
+### Example Config
+
+To use OpenCode Zen or NVidia, save into `~/.nidex/config.toml`. Set the envvars, OPENAI_API_KEY etc to your LLM provider's API key.  
+
+```toml
+sandbox_mode = "danger-full-access"
+
+[analytics]
+enabled = false
+
+[profiles.opencode]
+model_provider = "opencode"
+model_reasoning_effort = "none"
+
+[model_providers.opencode]
+name = "opencode"
+base_url = "https://opencode.ai/zen/v1"
+env_key = "OPENAI_API_KEY"
+wire_api = "chat"
+
+[profiles.nvidia]
+model_provider = "nvidia"
+model = "deepseek-ai/deepseek-v4-flash"
+
+[model_providers.nvidia]
+name = "nvidia"
+base_url = "https://integrate.api.nvidia.com/v1"
+env_key = "NVIDIA_API_KEY"
+wire_api = "chat"
+
+[features]
+steer = true
+apply_patch_json = true
+apply_patch_tool = true
+collaboration_modes = true
+```
+
+Then use like this:
+
+```bash
+nixdex -p opencode
+```
