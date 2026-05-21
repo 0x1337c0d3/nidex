@@ -78,6 +78,7 @@ struct DependencyTool {
 
 const SKILLS_FILENAME: &str = "SKILL.md";
 const AGENTS_DIR_NAME: &str = ".agents";
+const NIDEX_DIR_NAME: &str = ".nidex";
 const SKILLS_METADATA_DIR: &str = "agents";
 const SKILLS_METADATA_FILENAME: &str = "openai.yaml";
 const SKILLS_DIR_NAME: &str = "skills";
@@ -259,12 +260,14 @@ fn repo_agents_skill_roots(config_layer_stack: &ConfigLayerStack, cwd: &Path) ->
     let dirs = dirs_between_project_root_and_cwd(cwd, &project_root);
     let mut roots = Vec::new();
     for dir in dirs {
-        let agents_skills = dir.join(AGENTS_DIR_NAME).join(SKILLS_DIR_NAME);
-        if agents_skills.is_dir() {
-            roots.push(SkillRoot {
-                path: agents_skills,
-                scope: SkillScope::Repo,
-            });
+        for dir_name in [AGENTS_DIR_NAME, NIDEX_DIR_NAME] {
+            let skills = dir.join(dir_name).join(SKILLS_DIR_NAME);
+            if skills.is_dir() {
+                roots.push(SkillRoot {
+                    path: skills,
+                    scope: SkillScope::Repo,
+                });
+            }
         }
     }
     roots
@@ -1813,6 +1816,33 @@ interface:
                 path: normalized(&skill_path),
                 scope: SkillScope::Repo,
             }]
+        );
+    }
+
+    #[tokio::test]
+    async fn loads_skills_from_nidex_dir_without_config_toml() {
+        let codex_home = tempfile::tempdir().expect("tempdir");
+        let repo_dir = tempfile::tempdir().expect("tempdir");
+        mark_as_git_repo(repo_dir.path());
+
+        let skill_path = write_skill_at(
+            &repo_dir.path().join(NIDEX_DIR_NAME).join(SKILLS_DIR_NAME),
+            "my-skill",
+            "nidex-skill",
+            "from nidex",
+        );
+        let cfg = make_config_for_cwd(&codex_home, repo_dir.path().to_path_buf()).await;
+
+        let outcome = load_skills(&cfg);
+        assert!(
+            outcome.errors.is_empty(),
+            "unexpected errors: {:?}",
+            outcome.errors
+        );
+        assert!(
+            outcome.skills.iter().any(|s| s.name == "nidex-skill"),
+            "expected nidex-skill to be discovered; got: {:?}",
+            outcome.skills
         );
     }
 
