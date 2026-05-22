@@ -774,7 +774,8 @@ fn create_grep_files_tool() -> ToolSpec {
     ToolSpec::Function(ResponsesApiTool {
         name: "grep_files".to_string(),
         description: "Finds files whose contents match the pattern and lists them by modification \
-                      time."
+                      time. To find symbol definitions or call sites use `code_query` instead. \
+                      To list all symbols across a directory use `code_symbols` instead."
             .to_string(),
         strict: false,
         parameters: JsonSchema::Object {
@@ -800,7 +801,8 @@ fn create_code_nav_init_tool() -> ToolSpec {
         name: "code_nav_init".to_string(),
         description:
             "Initialize or refresh the code-nav symbol index for the current working directory. \
-             Call this at the start of a session to warm the index before using code_symbols. \
+             Call this FIRST at the start of every session, before using code_symbols or \
+             code_query — it must be called before any code search or file exploration. \
              Pass reset: true to rebuild the index from scratch if it is stale or corrupted."
                 .to_string(),
         strict: false,
@@ -840,7 +842,9 @@ fn create_code_symbols_tool() -> ToolSpec {
         description:
             "List all top-level symbols (functions, structs, classes, enums, traits, etc.) \
              defined in a file or directory using tree-sitter AST parsing. Returns each symbol's \
-             name, kind, file path, and line number as JSON."
+             name, kind, file path, and line number as JSON. \
+             Prefer this over reading or catting a file when you need to understand its structure \
+             or find what functions/types it defines."
                 .to_string(),
         strict: false,
         parameters: JsonSchema::Object {
@@ -991,7 +995,9 @@ fn create_read_file_tool() -> ToolSpec {
     ToolSpec::Function(ResponsesApiTool {
         name: "read_file".to_string(),
         description:
-            "Reads a local file with 1-indexed line numbers, supporting slice and indentation-aware block modes."
+            "Reads a local file with 1-indexed line numbers, supporting slice and indentation-aware \
+             block modes. To understand a file's structure or list its functions and types, prefer \
+             `code_symbols` instead of reading the whole file."
                 .to_string(),
         strict: false,
         parameters: JsonSchema::Object {
@@ -1037,7 +1043,8 @@ fn create_list_dir_tool() -> ToolSpec {
     ToolSpec::Function(ResponsesApiTool {
         name: "list_dir".to_string(),
         description:
-            "Lists entries in a local directory with 1-indexed entry numbers and simple type labels."
+            "Lists entries in a local directory with 1-indexed entry numbers and simple type labels. \
+             To explore symbols defined across a directory, prefer `code_symbols(path=dir)` instead."
                 .to_string(),
         strict: false,
         parameters: JsonSchema::Object {
@@ -1141,7 +1148,10 @@ fn create_read_mcp_resource_tool() -> ToolSpec {
     ToolSpec::Function(ResponsesApiTool {
         name: "read_mcp_resource".to_string(),
         description:
-            "Read a specific resource from an MCP server given the server name and resource URI."
+            "Read a specific resource from an externally configured MCP server given the server \
+             name and resource URI. Only use server names that appear in list_mcp_resources \
+             output. Internal tools such as code_nav_init, code_symbols, and code_query are NOT \
+             MCP servers and must not be used as the server parameter."
                 .to_string(),
         strict: false,
         parameters: JsonSchema::Object {
