@@ -9,6 +9,7 @@ pub enum Lang {
     JavaScript,
     Python,
     Rust,
+    Swift,
     TypeScript,
 }
 
@@ -22,6 +23,7 @@ impl Lang {
             "js" | "mjs" | "cjs" => Some(Self::JavaScript),
             "py" | "pyw" => Some(Self::Python),
             "rs" => Some(Self::Rust),
+            "swift" => Some(Self::Swift),
             "ts" | "tsx" | "mts" | "cts" => Some(Self::TypeScript),
             _ => None,
         }
@@ -36,6 +38,7 @@ impl Lang {
             "js" | "javascript" => Some(Self::JavaScript),
             "py" | "python" => Some(Self::Python),
             "rs" | "rust" => Some(Self::Rust),
+            "swift" => Some(Self::Swift),
             "ts" | "tsx" | "typescript" => Some(Self::TypeScript),
             _ => None,
         }
@@ -50,6 +53,7 @@ impl Lang {
             Self::JavaScript => "javascript",
             Self::Python => "python",
             Self::Rust => "rust",
+            Self::Swift => "swift",
             Self::TypeScript => "typescript",
         }
     }
@@ -63,6 +67,7 @@ impl Lang {
             Self::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
             Self::Python => tree_sitter_python::LANGUAGE.into(),
             Self::Rust => tree_sitter_rust::LANGUAGE.into(),
+            Self::Swift => tree_sitter_swift::LANGUAGE.into(),
             Self::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
         }
     }
@@ -77,6 +82,7 @@ impl Lang {
             Self::JavaScript => &["js", "mjs", "cjs"],
             Self::Python => &["py", "pyw"],
             Self::Rust => &["rs"],
+            Self::Swift => &["swift"],
             Self::TypeScript => &["ts", "tsx", "mts", "cts"],
         }
     }

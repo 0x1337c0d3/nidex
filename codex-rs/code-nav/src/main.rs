@@ -25,7 +25,7 @@ fn print_usage() {
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
 
-    match args.get(1).map(|s| s.as_str()) {
+    match args.get(1).map(String::as_str) {
         Some("symbols") => {
             let path: PathBuf = args
                 .get(2)
@@ -60,8 +60,8 @@ async fn main() -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&symbols)?);
         }
         Some("query") => {
-            let lang_str = args.get(2).map(|s| s.as_str()).unwrap_or("");
-            let query_str = args.get(3).map(|s| s.as_str()).unwrap_or("");
+            let lang_str = args.get(2).map(String::as_str).unwrap_or("");
+            let query_str = args.get(3).map(String::as_str).unwrap_or("");
             let path: PathBuf = args
                 .get(4)
                 .map(PathBuf::from)

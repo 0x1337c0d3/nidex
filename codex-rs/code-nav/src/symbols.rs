@@ -137,6 +137,29 @@ fn symbols_query(lang: Lang) -> &'static str {
              (enum_specifier name: (type_identifier) @enum.name)
              (namespace_definition name: (namespace_identifier) @namespace.name)"
         }
+        Lang::Swift => {
+            "(class_declaration
+               declaration_kind: \"struct\"
+               name: (type_identifier) @struct.name)
+             (class_declaration
+               declaration_kind: \"class\"
+               name: (type_identifier) @class.name)
+             (class_declaration
+               declaration_kind: \"actor\"
+               name: (type_identifier) @class.name)
+             (class_declaration
+               declaration_kind: \"enum\"
+               name: (type_identifier) @enum.name)
+             (class_declaration
+               declaration_kind: \"extension\"
+               name: (type_identifier) @type.name)
+             (function_declaration
+               (simple_identifier) @fn.name)
+             (protocol_declaration
+               name: (type_identifier) @interface.name)
+             (typealias_declaration
+               name: (type_identifier) @type.name)"
+        }
         Lang::Bash => "(function_definition name: (word) @fn.name)",
     }
 }
@@ -167,6 +190,7 @@ pub fn run_symbols(path: &Path, lang: Option<Lang>) -> Result<Vec<Symbol>> {
             Lang::JavaScript,
             Lang::Python,
             Lang::Rust,
+            Lang::Swift,
             Lang::TypeScript,
         ]
     };
@@ -243,5 +267,24 @@ mod tests {
         let names: Vec<&str> = syms.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"greet"), "expected greet in {names:?}");
         assert!(names.contains(&"Dog"), "expected Dog in {names:?}");
+    }
+
+    #[test]
+    fn symbols_swift_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("sample.swift");
+        let mut f = std::fs::File::create(&path).expect("create");
+        write!(
+            f,
+            "struct Foo {{}}\nfunc bar() {{}}\nenum Baz {{}}\nclass Qux {{}}\n"
+        )
+        .expect("write");
+
+        let syms = run_symbols(&path, None).expect("run_symbols");
+        let names: Vec<&str> = syms.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"Foo"), "expected Foo in {names:?}");
+        assert!(names.contains(&"bar"), "expected bar in {names:?}");
+        assert!(names.contains(&"Baz"), "expected Baz in {names:?}");
+        assert!(names.contains(&"Qux"), "expected Qux in {names:?}");
     }
 }

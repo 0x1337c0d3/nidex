@@ -278,7 +278,7 @@ pub fn scan_for_changes(
 pub fn find_project_root(path: &Path) -> PathBuf {
     let base = if path.is_file() {
         path.parent()
-            .map(|p| p.to_path_buf())
+            .map(Path::to_path_buf)
             .unwrap_or_else(|| path.to_path_buf())
     } else {
         path.to_path_buf()
