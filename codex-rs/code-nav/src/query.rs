@@ -64,7 +64,6 @@ pub fn run_query(query_str: &str, lang: Lang, path: &Path) -> Result<Vec<QueryMa
             None => continue,
         };
 
-        let source_str = std::str::from_utf8(&source).unwrap_or("");
         let file_path = entry.path().to_string_lossy().into_owned();
 
         let mut cursor = QueryCursor::new();
@@ -77,7 +76,7 @@ pub fn run_query(query_str: &str, lang: Lang, path: &Path) -> Result<Vec<QueryMa
                     .unwrap_or("unknown");
                 let text = cap
                     .node
-                    .utf8_text(source_str.as_bytes())
+                    .utf8_text(&source)
                     .unwrap_or("")
                     .to_string();
                 results.push(QueryMatch {
